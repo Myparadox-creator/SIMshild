@@ -1,0 +1,7 @@
+{
+  "name": "simshield-risk-service",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node src/server.mjs", "test": "node --test" },
+  "engines": { "node": ">=20" }
+}

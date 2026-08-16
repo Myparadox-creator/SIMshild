@@ -1,0 +1,10 @@
+-- PostgreSQL production schema. Store only hashes/tokenized identifiers.
+CREATE TABLE mobile_identity_events (event_id UUID PRIMARY KEY,user_id UUID NOT NULL,event_type TEXT NOT NULL,source TEXT NOT NULL,platform TEXT NOT NULL,timestamp TIMESTAMPTZ NOT NULL,carrier TEXT,previous_carrier TEXT,sim_type TEXT,device_id_hash TEXT,ip_address_hash TEXT,country TEXT,metadata JSONB NOT NULL DEFAULT '{}',verified BOOLEAN NOT NULL DEFAULT FALSE,simulation BOOLEAN NOT NULL DEFAULT FALSE);
+CREATE INDEX mobile_identity_events_user_time ON mobile_identity_events(user_id,timestamp DESC);
+CREATE INDEX mobile_identity_events_type_time ON mobile_identity_events(event_type,timestamp DESC);
+CREATE TABLE fraud_risk_scores (id UUID PRIMARY KEY,user_id UUID NOT NULL,correlation_id UUID NOT NULL,risk_score SMALLINT NOT NULL CHECK(risk_score BETWEEN 0 AND 100),risk_level TEXT NOT NULL,reason_codes JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE INDEX fraud_risk_scores_user_level ON fraud_risk_scores(user_id,risk_level,created_at DESC);
+CREATE TABLE fraud_alerts (alert_id UUID PRIMARY KEY,user_id UUID NOT NULL,severity TEXT NOT NULL,risk_score SMALLINT NOT NULL,alert_type TEXT NOT NULL,title TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,reason_codes JSONB NOT NULL,related_event_ids JSONB NOT NULL,simulation BOOLEAN NOT NULL DEFAULT FALSE,triggered_at TIMESTAMPTZ NOT NULL,resolved_at TIMESTAMPTZ,resolved_by UUID);
+CREATE INDEX fraud_alerts_user_status ON fraud_alerts(user_id,status,triggered_at DESC);
+CREATE TABLE fraud_cases (case_id UUID PRIMARY KEY,user_id UUID NOT NULL,alert_id UUID NOT NULL REFERENCES fraud_alerts(alert_id),status TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE trusted_devices (id UUID PRIMARY KEY,user_id UUID NOT NULL,device_id_hash TEXT NOT NULL,platform TEXT NOT NULL,first_seen_at TIMESTAMPTZ NOT NULL,last_seen_at TIMESTAMPTZ NOT NULL,trusted_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ,risk_status TEXT NOT NULL,UNIQUE(user_id,device_id_hash));
