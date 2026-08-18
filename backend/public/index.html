@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIMShield — SecOps Fraud Mitigation & Attack Simulator Studio</title>
+  <meta name="description" content="Real-time Mobile Identity Fraud Risk Engine, Telecom SIM-Swap Detection, and Threat Simulator Studio.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Top Navigation -->
+  <header class="navbar" id="top-nav">
+    <div class="nav-brand">
+      <div class="brand-logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">SIMShield <span class="badge-tag">SecOps Studio</span></h1>
+        <p class="brand-subtitle">Zero-Trust Mobile Identity & Fraud Risk Service</p>
+      </div>
+    </div>
+
+    <div class="nav-controls">
+      <div class="status-indicator">
+        <span class="pulse-dot" id="system-status-dot"></span>
+        <span id="system-status-text">Backend Connected</span>
+      </div>
+
+      <div class="user-select-box">
+        <label for="user-select">Target Subject:</label>
+        <select id="user-select">
+          <option value="demo-user">demo-user (Default Sandbox)</option>
+          <option value="victim-executive-01">victim-executive-01</option>
+          <option value="high-net-worth-user">high-net-worth-user</option>
+        </select>
+      </div>
+
+      <button id="btn-reset-state" class="btn btn-secondary btn-sm" title="Reset current subject's events and alerts">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+          <path d="M3 3v5h5"/>
+        </svg>
+        Reset State
+      </button>
+
+      <button id="btn-custom-event" class="btn btn-primary btn-sm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Inject Custom Signal
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="dashboard-container">
+    
+    <!-- Metrics Ribbon -->
+    <section class="metrics-ribbon" aria-label="System Metrics">
+      <div class="metric-card">
+        <span class="metric-label">Ingested Signals (24h)</span>
+        <div class="metric-value-row">
+          <span class="metric-number" id="metric-total-events">0</span>
+          <span class="metric-trend">Telecom + Auth</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-label">Active Security Alerts</span>
+        <div class="metric-value-row">
+          <span class="metric-number" id="metric-active-alerts">0</span>
+          <span class="metric-badge" id="metric-alert-badge">NORMAL</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-label">Escalated ATO Cases</span>
+        <div class="metric-value-row">
+          <span class="metric-number" id="metric-open-cases">0</span>
+          <span class="metric-trend text-danger">Review Required</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <span class="metric-label">Held Transactions</span>
+        <div class="metric-value-row">
+          <span class="metric-number" id="metric-held-txns">0</span>
+          <span class="metric-trend text-warning">Auto-Mitigated</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Core Grid Layout -->
+    <div class="main-grid">
+      
+      <!-- Left Column: Authoritative Risk Posture -->
+      <div class="grid-column">
+        
+        <!-- Risk Evaluation Card -->
+        <article class="panel-card" id="panel-risk-gauge">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Authoritative Risk Assessment</h2>
+              <p class="panel-desc">Correlated 24-hour sliding window mobile identity scoring</p>
+            </div>
+            <span class="badge-pill" id="risk-level-badge">LOW RISK</span>
+          </div>
+
+          <div class="gauge-wrapper">
+            <svg class="risk-gauge-svg" viewBox="0 0 200 120" id="risk-gauge-svg">
+              <!-- Background Arc -->
+              <path class="gauge-bg" d="M 20 105 A 80 80 0 0 1 180 105" fill="none" stroke-width="14" stroke-linecap="round"/>
+              <!-- Filled Value Arc -->
+              <path class="gauge-fill" id="gauge-fill-path" d="M 20 105 A 80 80 0 0 1 180 105" fill="none" stroke-width="14" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="251.3"/>
+              <!-- Needle -->
+              <line class="gauge-needle" id="gauge-needle" x1="100" y1="105" x2="100" y2="35" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="100" cy="105" r="6" class="gauge-pivot"/>
+            </svg>
+            <div class="gauge-center-text">
+              <span class="gauge-score-value" id="gauge-score-value">0</span>
+              <span class="gauge-score-max">/ 100</span>
+            </div>
+          </div>
+
+          <!-- Policy & Action Banner -->
+          <div class="mitigation-banner" id="mitigation-banner">
+            <div class="mitigation-icon-box">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <div>
+              <span class="mitigation-title" id="mitigation-title">POLICY: ALLOW (0 - 29)</span>
+              <p class="mitigation-desc" id="mitigation-desc">Normal mobile identity profile. Unrestricted banking and authentication access.</p>
+            </div>
+          </div>
+
+          <!-- Reason Codes -->
+          <div class="reason-section">
+            <span class="section-label">Active Correlated Risk Factors:</span>
+            <div class="reason-tags" id="reason-tags">
+              <span class="reason-pill none">No active risk signals</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Incidents & Cases Panel -->
+        <article class="panel-card" id="panel-cases">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Active Fraud Alerts & Investigation Cases</h2>
+              <p class="panel-desc">Authoritative mitigation actions and analyst review queue</p>
+            </div>
+          </div>
+
+          <div class="cases-list" id="cases-list">
+            <div class="empty-state">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+              <p>No open fraud alerts or critical escalation cases for this subject.</p>
+            </div>
+          </div>
+        </article>
+
+      </div>
+
+      <!-- Right Column: Attack Simulator Studio -->
+      <div class="grid-column">
+        
+        <!-- Attack Simulator Studio Card -->
+        <article class="panel-card" id="panel-simulator">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Attack Simulator Studio</h2>
+              <p class="panel-desc">Execute realistic telecom hijacking and account takeover attack chains</p>
+            </div>
+            <span class="badge-tag live-tag">SANDBOX ENGINE</span>
+          </div>
+
+          <!-- Scenario Controls -->
+          <div class="scenario-grid">
+            
+            <div class="scenario-card" id="card-sim-swap">
+              <div class="scenario-meta">
+                <span class="scenario-icon">📶</span>
+                <div>
+                  <h3 class="scenario-title">SIM Swap Attack</h3>
+                  <p class="scenario-desc">Simulates physical SIM replacement reported by telecom carrier (+30 pts).</p>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-scenario" onclick="window.SimShieldApp.runSingleScenario('simSwap')">
+                Execute SIM Swap
+              </button>
+            </div>
+
+            <div class="scenario-card" id="card-esim-change">
+              <div class="scenario-meta">
+                <span class="scenario-icon">📱</span>
+                <div>
+                  <h3 class="scenario-title">eSIM Hijacking</h3>
+                  <p class="scenario-desc">Simulates digital eSIM profile reassignment (+30 pts).</p>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-scenario" onclick="window.SimShieldApp.runSingleScenario('esimChange')">
+                Execute eSIM Hijack
+              </button>
+            </div>
+
+            <div class="scenario-card" id="card-number-port">
+              <div class="scenario-meta">
+                <span class="scenario-icon">🔄</span>
+                <div>
+                  <h3 class="scenario-title">Unauthorized Port-Out</h3>
+                  <p class="scenario-desc">Simulates MSISDN transfer to an adversarial mobile carrier (+25 pts).</p>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-scenario" onclick="window.SimShieldApp.runSingleScenario('numberPort')">
+                Execute Number Port
+              </button>
+            </div>
+
+            <div class="scenario-card scenario-card-featured" id="card-ato-chain">
+              <div class="scenario-meta">
+                <span class="scenario-icon">🚨</span>
+                <div>
+                  <h3 class="scenario-title">Full Account Takeover (ATO) Chain</h3>
+                  <p class="scenario-desc">Sequential multi-stage attack: SIM Swap → New Device Login → Password Reset → Beneficiary Addition → High-Value Transfer Hold.</p>
+                </div>
+              </div>
+              
+              <div class="ato-stepper-progress" id="ato-stepper-progress" style="display: none;">
+                <div class="progress-bar-track">
+                  <div class="progress-bar-fill" id="ato-progress-fill"></div>
+                </div>
+                <span class="stepper-label" id="ato-stepper-label">Executing Step 1/5: SIM Swap...</span>
+              </div>
+
+              <button class="btn btn-danger btn-block" id="btn-run-ato" onclick="window.SimShieldApp.runAtoScenario()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                Launch Multi-Stage ATO Chain Replay
+              </button>
+            </div>
+
+          </div>
+
+          <!-- Simulation Feed Console -->
+          <div class="sim-console">
+            <div class="console-header">
+              <span>Telemetry Execution Log</span>
+              <button class="btn-text" onclick="window.SimShieldApp.clearLogs()">Clear Log</button>
+            </div>
+            <div class="console-output" id="sim-console-output">
+              <div class="console-line info">[System] SIMShield SecOps Studio initialized in Sandbox mode.</div>
+              <div class="console-line">[Ready] Select an attack scenario above or craft custom signals.</div>
+            </div>
+          </div>
+        </article>
+
+      </div>
+
+    </div>
+
+    <!-- Bottom Section: Real-Time Event Stream Timeline -->
+    <section class="panel-card timeline-panel" id="panel-timeline">
+      <div class="panel-header timeline-header">
+        <div>
+          <h2 class="panel-title">Real-Time Mobile Identity & Security Signal Feed</h2>
+          <p class="panel-desc">Cryptographically verified telecom and banking audit log</p>
+        </div>
+        <div class="filter-group">
+          <button class="filter-btn active" data-filter="ALL" onclick="window.SimShieldApp.setFilter('ALL')">All Signals</button>
+          <button class="filter-btn" data-filter="MOBILE" onclick="window.SimShieldApp.setFilter('MOBILE')">Telecom / SIM</button>
+          <button class="filter-btn" data-filter="AUTH" onclick="window.SimShieldApp.setFilter('AUTH')">Auth & Device</button>
+          <button class="filter-btn" data-filter="TXN" onclick="window.SimShieldApp.setFilter('TXN')">Transactions</button>
+        </div>
+      </div>
+
+      <div class="timeline-table-wrapper">
+        <table class="timeline-table" id="timeline-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Event Type</th>
+              <th>Source / Origin</th>
+              <th>Subject / User</th>
+              <th>Platform & Device</th>
+              <th>Carrier / Transition</th>
+              <th>Risk Flag</th>
+              <th>Inspect</th>
+            </tr>
+          </thead>
+          <tbody id="timeline-tbody">
+            <tr>
+              <td colspan="8" class="text-center py-4 text-muted">No security events recorded in correlation window.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal: Custom Event Injector -->
+  <div class="modal-backdrop" id="custom-event-modal" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Inject Custom Mobile Identity Signal</h3>
+        <button class="btn-close" onclick="window.SimShieldApp.closeModal()">&times;</button>
+      </div>
+      <form id="custom-event-form" onsubmit="window.SimShieldApp.submitCustomEvent(event)">
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="event-userId">User ID (Subject)</label>
+              <input type="text" id="event-userId" class="form-control" value="demo-user" required>
+            </div>
+            <div class="form-group">
+              <label for="event-type">Event Type</label>
+              <select id="event-type" class="form-control">
+                <option value="SIM_CHANGED">SIM_CHANGED (Physical Swap - 30 pts)</option>
+                <option value="ESIM_CHANGED">ESIM_CHANGED (eSIM Change - 30 pts)</option>
+                <option value="NUMBER_PORTED">NUMBER_PORTED (Carrier Port - 25 pts)</option>
+                <option value="NEW_DEVICE_LOGIN">NEW_DEVICE_LOGIN (New Device - 20 pts)</option>
+                <option value="DEVICE_CHANGED">DEVICE_CHANGED (Device Changed - 20 pts)</option>
+                <option value="PASSWORD_RESET">PASSWORD_RESET (Password Reset - 15 pts)</option>
+                <option value="PIN_RESET">PIN_RESET (PIN Reset - 15 pts)</option>
+                <option value="NEW_BENEFICIARY">NEW_BENEFICIARY (New Beneficiary - 15 pts)</option>
+                <option value="UNUSUAL_TRANSACTION">UNUSUAL_TRANSACTION (Abnormal Txn - 20 pts)</option>
+                <option value="UNUSUAL_LOCATION">UNUSUAL_LOCATION (Geo Anomaly - 10 pts)</option>
+                <option value="FAILED_AUTH_ATTEMPTS">FAILED_AUTH_ATTEMPTS (Auth Failure - 10 pts)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="event-source">Event Source</label>
+              <select id="event-source" class="form-control">
+                <option value="CARRIER">CARRIER (Authorized Telecom Webhook)</option>
+                <option value="MOCK_CARRIER" selected>MOCK_CARRIER (Sandbox)</option>
+                <option value="AUTH_SERVICE">AUTH_SERVICE (Core Auth System)</option>
+                <option value="DEVICE">DEVICE (Android Client Telemetry)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="event-carrier">Carrier Name</label>
+              <input type="text" id="event-carrier" class="form-control" value="T-Mobile US / Verizon">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="event-device">Raw Device / IMEI Identifier (Auto-Hashed)</label>
+              <input type="text" id="event-device" class="form-control" value="android-device-pixel8-9981">
+            </div>
+            <div class="form-group">
+              <label for="event-ip">Raw IP Address (Auto-Hashed)</label>
+              <input type="text" id="event-ip" class="form-control" value="198.51.100.42">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="event-metadata">Custom Metadata (JSON)</label>
+            <textarea id="event-metadata" class="form-control code-input" rows="3">{"transactionId": "txn-transfer-88910", "amount": "$15,000", "country": "US"}</textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="window.SimShieldApp.closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Transmit Signal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Event Payload Inspector -->
+  <div class="modal-backdrop" id="event-detail-modal" style="display: none;">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title" id="inspector-title">Event Signal Inspector</h3>
+        <button class="btn-close" onclick="window.SimShieldApp.closeInspector()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="inspector-summary" id="inspector-summary"></div>
+        <div class="form-group">
+          <label>Normalized MobileIdentityEvent Contract (JSON):</label>
+          <pre class="json-viewer" id="inspector-json"></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="window.SimShieldApp.closeInspector()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

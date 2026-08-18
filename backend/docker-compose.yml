@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: simshield-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: simshield
+      POSTGRES_PASSWORD: simshield_password
+      POSTGRES_DB: simshield_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/001_fraud_risk.sql:/docker-entrypoint-initdb.d/001_fraud_risk.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U simshield -d simshield_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  risk-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: simshield-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      SIMSHIELD_DEMO: "true"
+      DATABASE_URL: postgres://simshield:simshield_password@postgres:5432/simshield_db
+      HASH_SECRET: prod-secure-pepper-key
+      CARRIER_WEBHOOK_SECRET: carrier-shared-secret-key
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "http.get('http://localhost:3000/healthz', (res) => process.exit(res.statusCode === 200 ? 0 : 1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:

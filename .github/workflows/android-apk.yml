@@ -3,6 +3,8 @@ name: Build SIMShield APK
 on:
   push:
     branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -14,21 +16,29 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-      - name: Set up Java
+
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+
       - name: Test backend risk engine
         working-directory: backend
         run: npm test
+
       - name: Build debug APK
-        run: gradle :app:assembleDebug
-      - name: Upload APK
+        run: ./gradlew :app:assembleDebug
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: simshield-debug-apk
