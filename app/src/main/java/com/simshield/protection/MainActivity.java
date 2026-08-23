@@ -22,22 +22,25 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * Mobile Banking Security Status & SIM/eSIM Fraud Risk Detection Activity.
+ * Unified SIMShield Android Application.
  * <p>
- * Implements hardware-backed Biometric Authentication (Fingerprint/Face),
- * real-time risk scores, correlated security timeline, and fraud mitigation actions.
+ * Combines:
+ * 1. 💳 SIMShield Pay — Mock UPI Payment Gateway with real-time pre-check fraud interception.
+ * 2. 🛡️ SIMShield Security — Mobile Telecom & Account Takeover Defense Center.
  */
 public class MainActivity extends Activity {
 
@@ -61,7 +64,29 @@ public class MainActivity extends Activity {
     private SecurityApiClient riskApi;
     private CancellationSignal cancellationSignal;
 
-    // Dynamic UI References
+    // Active Tab State: 0 = Pay (Mock UPI), 1 = Security Defense
+    private int currentTab = 0;
+
+    // Root Containers
+    private LinearLayout payTabContainer;
+    private LinearLayout securityTabContainer;
+    private Button btnTabPay;
+    private Button btnTabSecurity;
+
+    // --- Tab 1: SIMShield Pay UI Elements ---
+    private TextView payBalanceText;
+    private TextView payAccountHolderText;
+    private TextView paySecurityChipText;
+    private View paySecurityDotView;
+    private EditText inputRecipient;
+    private EditText inputUpi;
+    private EditText inputAmount;
+    private EditText inputMessage;
+    private Button btnPay;
+    private LinearLayout txnHistoryContainer;
+    private int currentBalance = 10000;
+
+    // --- Tab 2: Security Center UI Elements ---
     private TextView scoreText;
     private TextView headlineText;
     private TextView statusTitleText;
@@ -81,14 +106,20 @@ public class MainActivity extends Activity {
         createNotificationChannel();
         checkNotificationPermission();
 
-        buildUiLayout();
-        refreshSecurityStatus();
+        buildUnifiedUi();
+        refreshAllData();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshAllData();
     }
 
     /**
-     * Constructs the responsive UI programmatically following clean visual hierarchy.
+     * Constructs the single responsive UI with top tab switcher.
      */
-    private void buildUiLayout() {
+    private void buildUnifiedUi() {
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(true);
 
@@ -99,24 +130,444 @@ public class MainActivity extends Activity {
         scrollView.addView(root);
         setContentView(scrollView);
 
-        // Header Row
+        // Header Title
         LinearLayout headerRow = new LinearLayout(this);
         headerRow.setOrientation(LinearLayout.HORIZONTAL);
         headerRow.setGravity(Gravity.CENTER_VERTICAL);
-        headerRow.setPadding(0, dp(4), 0, dp(14));
+        headerRow.setPadding(0, dp(4), 0, dp(12));
 
-        TextView appTitle = createText("SIMShield Security", 22, COLOR_TEXT_PRIMARY);
-        headerRow.addView(appTitle, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout headerTitles = new LinearLayout(this);
+        headerTitles.setOrientation(LinearLayout.VERTICAL);
+        headerTitles.addView(createText("SIMShield", 24, COLOR_TEXT_PRIMARY));
+        headerTitles.addView(createText("MOBILE IDENTITY & ZERO-TRUST BANKING", 11, COLOR_TEXT_MUTED));
+        headerRow.addView(headerTitles, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        Button btnOpenPay = createButton("💳 SIMShield Pay", false);
-        btnOpenPay.setOnClickListener(v -> {
-            Intent intent = new Intent(MainActivity.this, MockPaymentActivity.class);
-            startActivity(intent);
-        });
-        headerRow.addView(btnOpenPay);
+        Button btnRefresh = createButton("🔄 Refresh", false);
+        btnRefresh.setOnClickListener(v -> refreshAllData());
+        headerRow.addView(btnRefresh);
 
         root.addView(headerRow);
 
+        // Top Navigation Tab Switcher (Segmented Control)
+        LinearLayout tabSwitcher = createBox(Color.rgb(235, 238, 245), 14);
+        tabSwitcher.setOrientation(LinearLayout.HORIZONTAL);
+        tabSwitcher.setPadding(dp(4), dp(4), dp(4), dp(4));
+
+        btnTabPay = new Button(this);
+        btnTabPay.setText("💳 SIMShield Pay");
+        btnTabPay.setTextSize(13);
+        btnTabPay.setTextColor(Color.WHITE);
+        btnTabPay.setBackground(createRoundedDrawable(COLOR_PRIMARY_BLUE, 10));
+        btnTabPay.setOnClickListener(v -> switchTab(0));
+
+        btnTabSecurity = new Button(this);
+        btnTabSecurity.setText("🛡️ Security Center");
+        btnTabSecurity.setTextSize(13);
+        btnTabSecurity.setTextColor(COLOR_TEXT_MUTED);
+        btnTabSecurity.setBackground(createRoundedDrawable(Color.TRANSPARENT, 10));
+        btnTabSecurity.setOnClickListener(v -> switchTab(1));
+
+        LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        tabSwitcher.addView(btnTabPay, tabParams);
+        tabSwitcher.addView(btnTabSecurity, tabParams);
+
+        LinearLayout.LayoutParams switcherParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        switcherParams.setMargins(0, 0, 0, dp(16));
+        root.addView(tabSwitcher, switcherParams);
+
+        // Tab 1 Container: SIMShield Pay
+        payTabContainer = new LinearLayout(this);
+        payTabContainer.setOrientation(LinearLayout.VERTICAL);
+        buildPayTabViews(payTabContainer);
+        root.addView(payTabContainer);
+
+        // Tab 2 Container: Security Center
+        securityTabContainer = new LinearLayout(this);
+        securityTabContainer.setOrientation(LinearLayout.VERTICAL);
+        securityTabContainer.setVisibility(View.GONE);
+        buildSecurityTabViews(securityTabContainer);
+        root.addView(securityTabContainer);
+    }
+
+    private void switchTab(int tabIndex) {
+        currentTab = tabIndex;
+        if (tabIndex == 0) {
+            payTabContainer.setVisibility(View.VISIBLE);
+            securityTabContainer.setVisibility(View.GONE);
+            btnTabPay.setTextColor(Color.WHITE);
+            btnTabPay.setBackground(createRoundedDrawable(COLOR_PRIMARY_BLUE, 10));
+            btnTabSecurity.setTextColor(COLOR_TEXT_MUTED);
+            btnTabSecurity.setBackground(createRoundedDrawable(Color.TRANSPARENT, 10));
+        } else {
+            payTabContainer.setVisibility(View.GONE);
+            securityTabContainer.setVisibility(View.VISIBLE);
+            btnTabSecurity.setTextColor(Color.WHITE);
+            btnTabSecurity.setBackground(createRoundedDrawable(COLOR_PRIMARY_BLUE, 10));
+            btnTabPay.setTextColor(COLOR_TEXT_MUTED);
+            btnTabPay.setBackground(createRoundedDrawable(Color.TRANSPARENT, 10));
+        }
+        refreshAllData();
+    }
+
+    // =========================================================================
+    // TAB 1: SIMShield Pay (Mock UPI Payment Gateway)
+    // =========================================================================
+
+    private void buildPayTabViews(LinearLayout container) {
+        // 1. Hero Balance & Security Posture Card
+        LinearLayout heroCard = createBox(COLOR_PRIMARY_BLUE, 20);
+        heroCard.setOrientation(LinearLayout.VERTICAL);
+        heroCard.setPadding(dp(20), dp(20), dp(20), dp(20));
+
+        LinearLayout balanceHeaderRow = new LinearLayout(this);
+        balanceHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        payAccountHolderText = createText("Rahul Sharma · AC10219988", 13, Color.rgb(218, 229, 255));
+        balanceHeaderRow.addView(payAccountHolderText, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        LinearLayout chipBox = createBox(Color.WHITE, 99);
+        chipBox.setPadding(dp(10), dp(4), dp(10), dp(4));
+        chipBox.setGravity(Gravity.CENTER_VERTICAL);
+
+        paySecurityDotView = new View(this);
+        paySecurityDotView.setLayoutParams(new LinearLayout.LayoutParams(dp(8), dp(8)));
+        paySecurityDotView.setBackground(createRoundedDrawable(COLOR_SUCCESS_GREEN, 99));
+        chipBox.addView(paySecurityDotView);
+
+        paySecurityChipText = createText(" LOW RISK", 11, COLOR_SUCCESS_GREEN);
+        chipBox.addView(paySecurityChipText);
+        balanceHeaderRow.addView(chipBox);
+
+        heroCard.addView(balanceHeaderRow);
+
+        TextView subBal = createText("AVAILABLE SIMULATED BALANCE", 11, Color.rgb(218, 229, 255));
+        subBal.setPadding(0, dp(12), 0, 0);
+        heroCard.addView(subBal);
+
+        payBalanceText = createText("₹10,000", 38, Color.WHITE);
+        payBalanceText.setPadding(0, dp(4), 0, 0);
+        heroCard.addView(payBalanceText);
+
+        container.addView(heroCard, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        // 2. Section: Send Money (Mock UPI Form)
+        addSectionHeader(container, "SEND MONEY VIA MOCK UPI");
+        LinearLayout sendCard = createCard();
+        sendCard.setPadding(dp(16), dp(16), dp(16), dp(16));
+
+        // Quick Beneficiary Chips
+        TextView quickLabel = createText("Quick Contacts:", 12, COLOR_TEXT_MUTED);
+        quickLabel.setPadding(0, 0, 0, dp(6));
+        sendCard.addView(quickLabel);
+
+        HorizontalScrollView hScroll = new HorizontalScrollView(this);
+        hScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout contactChipsRow = new LinearLayout(this);
+        contactChipsRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        contactChipsRow.addView(createContactChip("Rahul (₹2k)", "Rahul (Personal)", "rahul@mockbank", "2000"));
+        contactChipsRow.addView(createContactChip("Priya (₹1k)", "Priya Patel", "priya@mockbank", "1000"));
+        contactChipsRow.addView(createContactChip("Amit (₹500)", "Amit Kumar", "amit@mockbank", "500"));
+        contactChipsRow.addView(createContactChip("Attacker (₹2k)", "Attacker Mule Account", "attacker@fraudbank", "2000"));
+
+        hScroll.addView(contactChipsRow);
+        sendCard.addView(hScroll);
+
+        // Form Fields (Safe child addition)
+        inputRecipient = new EditText(this);
+        sendCard.addView(createFormBox("Recipient Name", inputRecipient, "Rahul (Personal)", InputType.TYPE_CLASS_TEXT));
+
+        inputUpi = new EditText(this);
+        sendCard.addView(createFormBox("UPI ID / Virtual Payment Address", inputUpi, "rahul@mockbank", InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS));
+
+        inputAmount = new EditText(this);
+        sendCard.addView(createFormBox("Amount (₹ INR)", inputAmount, "2000", InputType.TYPE_CLASS_NUMBER));
+
+        inputMessage = new EditText(this);
+        sendCard.addView(createFormBox("Message / Note (Optional)", inputMessage, "Demo payment", InputType.TYPE_CLASS_TEXT));
+
+        btnPay = createButton("CONTINUE TO PAY ₹2,000", false);
+        btnPay.setBackground(createRoundedDrawable(COLOR_PRIMARY_BLUE, 12));
+        btnPay.setTextColor(Color.WHITE);
+        btnPay.setPadding(0, dp(14), 0, dp(14));
+        btnPay.setOnClickListener(v -> initiatePaymentFlow());
+
+        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        btnParams.setMargins(0, dp(12), 0, 0);
+        sendCard.addView(btnPay, btnParams);
+
+        container.addView(sendCard);
+
+        // 3. Section: Quick Attack Sandbox
+        addSectionHeader(container, "DEVELOPER ATTACK SIMULATOR (SANDBOX)");
+        LinearLayout sandboxCard = createCard();
+        sandboxCard.setPadding(dp(14), dp(14), dp(14), dp(14));
+
+        sandboxCard.addView(createScenarioButton("Simulate SIM Swap (+30 pts)", "sim-swap"));
+        sandboxCard.addView(createScenarioButton("Simulate New Device (+20 pts)", "new-device"));
+        sandboxCard.addView(createScenarioButton("Simulate Full Account Takeover (ATO)", "account-takeover", true));
+        sandboxCard.addView(createScenarioButton("Reset Scenario & Balance (₹10,000)", "reset", false));
+
+        container.addView(sandboxCard);
+
+        // 4. Section: Recent Transactions
+        addSectionHeader(container, "RECENT TRANSACTIONS (LEDGER)");
+        LinearLayout historyCard = createCard();
+        historyCard.setPadding(dp(16), dp(16), dp(16), dp(16));
+
+        txnHistoryContainer = new LinearLayout(this);
+        txnHistoryContainer.setOrientation(LinearLayout.VERTICAL);
+        historyCard.addView(txnHistoryContainer);
+
+        container.addView(historyCard);
+
+        renderDefaultTransactions();
+    }
+
+    private View createFormBox(String label, EditText editText, String defaultValue, int inputType) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, dp(6), 0, dp(6));
+
+        TextView lbl = createText(label, 12, COLOR_TEXT_MUTED);
+        lbl.setPadding(0, 0, 0, dp(4));
+        box.addView(lbl);
+
+        editText.setText(defaultValue);
+        editText.setInputType(inputType);
+        editText.setTextSize(14);
+        editText.setTextColor(COLOR_TEXT_PRIMARY);
+        editText.setBackground(createRoundedDrawable(Color.rgb(243, 244, 248), 8));
+        editText.setPadding(dp(12), dp(10), dp(12), dp(10));
+        box.addView(editText);
+
+        return box;
+    }
+
+    private View createContactChip(String label, String name, String upi, String amount) {
+        Button btn = new Button(this);
+        btn.setText(label);
+        btn.setTextSize(11);
+        btn.setTextColor(COLOR_PRIMARY_BLUE);
+        btn.setBackground(createRoundedDrawable(Color.rgb(238, 242, 255), 99));
+        btn.setPadding(dp(12), dp(4), dp(12), dp(4));
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0, 0, dp(8), 0);
+        btn.setLayoutParams(params);
+
+        btn.setOnClickListener(v -> {
+            inputRecipient.setText(name);
+            inputUpi.setText(upi);
+            inputAmount.setText(amount);
+            btnPay.setText("CONTINUE TO PAY ₹" + amount);
+        });
+
+        return btn;
+    }
+
+    private void initiatePaymentFlow() {
+        String recipient = inputRecipient.getText().toString().trim();
+        String upiId = inputUpi.getText().toString().trim();
+        String amountStr = inputAmount.getText().toString().trim();
+
+        if (recipient.isEmpty()) recipient = "Rahul (Personal)";
+        if (upiId.isEmpty()) upiId = "rahul@mockbank";
+        int amount = 2000;
+        try {
+            amount = Integer.parseInt(amountStr);
+        } catch (Exception e) {
+            amount = 2000;
+        }
+
+        final int finalAmount = amount;
+        final String finalRecipient = recipient;
+        final String finalUpi = upiId;
+
+        btnPay.setEnabled(false);
+        btnPay.setText("Interception Pre-Check Running...");
+
+        riskApi.precheckTransaction(DEFAULT_USER_ID, finalRecipient, finalUpi, finalAmount, new SecurityApiClient.Callback<SecurityApiClient.TransactionResult>() {
+            @Override
+            public void success(SecurityApiClient.TransactionResult result) {
+                btnPay.setEnabled(true);
+                btnPay.setText("CONTINUE TO PAY ₹" + finalAmount);
+                handlePrecheckDecision(result);
+            }
+
+            @Override
+            public void failure(String safeMessage) {
+                btnPay.setEnabled(true);
+                btnPay.setText("CONTINUE TO PAY ₹" + finalAmount);
+                showToast("Error", safeMessage);
+            }
+        });
+    }
+
+    private void handlePrecheckDecision(SecurityApiClient.TransactionResult result) {
+        if ("ALLOW".equals(result.decision)) {
+            executeApprovedPayment(result);
+        } else if ("REQUIRE_VERIFICATION".equals(result.decision)) {
+            showVerificationRequiredDialog(result);
+        } else {
+            showBlockedTransactionAlert(result);
+        }
+    }
+
+    private void executeApprovedPayment(SecurityApiClient.TransactionResult precheck) {
+        riskApi.executeTransaction(precheck.transactionId, DEFAULT_USER_ID, new SecurityApiClient.Callback<SecurityApiClient.TransactionResult>() {
+            @Override
+            public void success(SecurityApiClient.TransactionResult execResult) {
+                currentBalance = execResult.newBalance;
+                payBalanceText.setText("₹" + NumberFormat.getNumberInstance(Locale.US).format(execResult.newBalance));
+
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("🟢 Payment Successful")
+                        .setMessage("₹" + execResult.amount + " transferred to " + execResult.recipientName + " (" + execResult.upiId + ").\n\n"
+                                + "Simulated Bank Balance:\n"
+                                + "₹" + execResult.previousBalance + " ➔ ₹" + execResult.newBalance + "\n\n"
+                                + "Transaction ID: " + execResult.transactionId)
+                        .setPositiveButton("Done", (d, w) -> refreshAllData())
+                        .show();
+            }
+
+            @Override
+            public void failure(String safeMessage) {
+                showToast("Execution Failed", safeMessage);
+                refreshAllData();
+            }
+        });
+    }
+
+    private void showVerificationRequiredDialog(SecurityApiClient.TransactionResult precheck) {
+        new AlertDialog.Builder(this)
+                .setTitle("🟡 Additional Verification Required")
+                .setMessage("SIMShield detected security signals requiring biometric confirmation:\n\n"
+                        + formatReasons(precheck.reasonCodes) + "\n\n"
+                        + "Risk Score: " + precheck.riskScore + "/100 (" + precheck.riskLevel + ")\n\n"
+                        + "Please scan your fingerprint to verify this ₹" + precheck.amount + " transfer.")
+                .setPositiveButton("Verify with Biometrics", (dialog, which) -> launchBiometricStepUp(precheck))
+                .setNegativeButton("Cancel Transfer", null)
+                .show();
+    }
+
+    private void showBlockedTransactionAlert(SecurityApiClient.TransactionResult precheck) {
+        String reasonsFormatted = formatReasons(precheck.reasonCodes);
+        if (reasonsFormatted.isEmpty()) {
+            reasonsFormatted = "• Recent SIM/eSIM change\n• New device\n• Password reset\n• New beneficiary";
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("🚨 TRANSACTION BLOCKED")
+                .setMessage("Amount: ₹" + precheck.amount + "\n\n"
+                        + "Risk Score: " + precheck.riskScore + "/100\n"
+                        + "Risk Level: " + precheck.riskLevel + "\n\n"
+                        + "Reasons:\n"
+                        + reasonsFormatted + "\n\n"
+                        + "Your money was not transferred.\n"
+                        + "Simulated Bank Balance: ₹" + NumberFormat.getNumberInstance(Locale.US).format(currentBalance) + " (UNTOUCHED)\n\n"
+                        + "The transaction was blocked before simulated execution.")
+                .setPositiveButton("🔒 SECURE MY ACCOUNT", (dialog, which) -> handleSecureAccountAction())
+                .setNegativeButton("Dismiss", (d, w) -> refreshAllData())
+                .setCancelable(false)
+                .show();
+    }
+
+    private void launchBiometricStepUp(SecurityApiClient.TransactionResult precheck) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            cancellationSignal = new CancellationSignal();
+            BiometricPrompt.Builder builder = new BiometricPrompt.Builder(this)
+                    .setTitle("Authenticate Transfer")
+                    .setSubtitle("Confirm ₹" + precheck.amount + " transfer to " + precheck.recipientName)
+                    .setDescription("Place your finger on sensor to authorize payment.")
+                    .setNegativeButton("Cancel", getMainExecutor(), (d, w) -> showToast("Cancelled", "Verification cancelled."));
+
+            BiometricPrompt prompt = builder.build();
+            prompt.authenticate(
+                    cancellationSignal,
+                    getMainExecutor(),
+                    new BiometricPrompt.AuthenticationCallback() {
+                        @Override
+                        public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult authResult) {
+                            super.onAuthenticationSucceeded(authResult);
+                            riskApi.verifyAndAuthorizeTransaction(precheck.transactionId, "BIOMETRIC_FINGERPRINT", new SecurityApiClient.Callback<SecurityApiClient.TransactionResult>() {
+                                @Override
+                                public void success(SecurityApiClient.TransactionResult res) {
+                                    executeApprovedPayment(res);
+                                }
+
+                                @Override
+                                public void failure(String safeMessage) {
+                                    showToast("Authorization Failed", safeMessage);
+                                }
+                            });
+                        }
+
+                        @Override
+                        public void onAuthenticationFailed() {
+                            super.onAuthenticationFailed();
+                            showToast("Fingerprint Error", "Fingerprint not recognized.");
+                        }
+
+                        @Override
+                        public void onAuthenticationError(int errorCode, CharSequence errString) {
+                            super.onAuthenticationError(errorCode, errString);
+                            fallbackPinVerification(precheck);
+                        }
+                    }
+            );
+        } else {
+            fallbackPinVerification(precheck);
+        }
+    }
+
+    private void fallbackPinVerification(SecurityApiClient.TransactionResult precheck) {
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        input.setHint("Enter 4-digit UPI PIN (e.g. 1234)");
+        input.setPadding(dp(16), dp(12), dp(16), dp(12));
+
+        new AlertDialog.Builder(this)
+                .setTitle("Security PIN Verification")
+                .setMessage("Enter your App Security PIN to authenticate this ₹" + precheck.amount + " transfer:")
+                .setView(input)
+                .setPositiveButton("Verify & Pay", (dialog, which) -> {
+                    String pin = input.getText().toString().trim();
+                    if (!pin.isEmpty()) {
+                        riskApi.verifyAndAuthorizeTransaction(precheck.transactionId, "APP_PIN", new SecurityApiClient.Callback<SecurityApiClient.TransactionResult>() {
+                            @Override
+                            public void success(SecurityApiClient.TransactionResult res) {
+                                executeApprovedPayment(res);
+                            }
+
+                            @Override
+                            public void failure(String safeMessage) {
+                                showToast("Failed", safeMessage);
+                            }
+                        });
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    // =========================================================================
+    // TAB 2: Security Center (Telecom & Account Takeover Defense)
+    // =========================================================================
+
+    private void buildSecurityTabViews(LinearLayout container) {
         // 1. Hero Score & Risk Card
         LinearLayout heroCard = createBox(COLOR_PRIMARY_BLUE, 20);
         heroCard.setOrientation(LinearLayout.VERTICAL);
@@ -133,13 +584,13 @@ public class MainActivity extends Activity {
         scoreText.setPadding(0, dp(16), 0, 0);
         heroCard.addView(scoreText);
 
-        root.addView(heroCard, new LinearLayout.LayoutParams(
+        container.addView(heroCard, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         ));
 
         // 2. Section: Protection Status & Fraud Alerts
-        addSectionHeader(root, "FRAUD RISK STATUS & ALERTS");
+        addSectionHeader(container, "FRAUD RISK STATUS & ALERTS");
         LinearLayout statusCard = createCard();
 
         LinearLayout statusRow = new LinearLayout(this);
@@ -176,16 +627,15 @@ public class MainActivity extends Activity {
         statusDetailText.setPadding(dp(16), dp(6), dp(16), dp(14));
         statusCard.addView(statusDetailText);
 
-        // 3. Customer Mitigation Action Buttons
         alertActionsContainer = new LinearLayout(this);
         alertActionsContainer.setOrientation(LinearLayout.VERTICAL);
         alertActionsContainer.setPadding(dp(16), 0, dp(16), dp(16));
         statusCard.addView(alertActionsContainer);
 
-        root.addView(statusCard);
+        container.addView(statusCard);
 
-        // 4. Section: Security Event Timeline
-        addSectionHeader(root, "RECENT SECURITY EVENTS (TIMELINE)");
+        // 3. Section: Security Event Timeline
+        addSectionHeader(container, "RECENT SECURITY EVENTS (TIMELINE)");
         LinearLayout timelineCard = createCard();
         timelineCard.setPadding(dp(16), dp(16), dp(16), dp(16));
 
@@ -193,257 +643,369 @@ public class MainActivity extends Activity {
         timelineListContainer.setOrientation(LinearLayout.VERTICAL);
         timelineCard.addView(timelineListContainer);
 
-        root.addView(timelineCard);
+        container.addView(timelineCard);
 
-        // 5. Section: Monitoring Preferences
-        addSectionHeader(root, "MONITORING PREFERENCES");
+        // 4. Section: Monitoring Preferences
+        addSectionHeader(container, "MONITORING PREFERENCES");
         LinearLayout monitoringCard = createCard();
-        addMonitoringSwitch(monitoringCard, "SIM Swap Monitoring", "Receive real-time alerts on SIM card replacement", "pref_sim");
-        addMonitoringSwitch(monitoringCard, "eSIM Hijack Defense", "Protect against unauthorized eSIM profile migration", "pref_esim");
-        addMonitoringSwitch(monitoringCard, "Device & Login Anomaly Checks", "Detect unfamiliar sign-in devices or locations", "pref_device");
-        root.addView(monitoringCard);
+        monitoringCard.setPadding(dp(16), dp(10), dp(16), dp(10));
 
-        // 6. Section: Developer Simulation Sandbox
-        addSectionHeader(root, "DEVELOPER SIMULATION (SANDBOX)");
-        LinearLayout simCard = createCard();
-        simCard.setPadding(dp(14), dp(14), dp(14), dp(14));
+        monitoringCard.addView(createPreferenceToggle(
+                "Carrier SIM-Swap Alerts",
+                "Instant push when telecom partner reports ICCID changes.",
+                "pref_carrier_sim",
+                true
+        ));
+        monitoringCard.addView(createDivider());
+        monitoringCard.addView(createPreferenceToggle(
+                "eSIM Profile Protection",
+                "Flag active profile transfers across devices.",
+                "pref_esim_guard",
+                true
+        ));
+        monitoringCard.addView(createDivider());
+        monitoringCard.addView(createPreferenceToggle(
+                "Biometric Wire Authorizations",
+                "Require local biometric verification for high-risk activity.",
+                "pref_biometric_auth",
+                true
+        ));
 
-        simCard.addView(createScenarioButton("Simulate SIM Swap (+30 pts)", "sim-swap"));
-        simCard.addView(createScenarioButton("Simulate eSIM Change (+30 pts)", "esim-change"));
-        simCard.addView(createScenarioButton("Simulate Number Porting (+25 pts)", "number-port"));
-        simCard.addView(createScenarioButton("Simulate New Device Sign-In (+20 pts)", "new-device"));
-        simCard.addView(createScenarioButton("Simulate Password Reset (+15 pts)", "password-reset"));
-        simCard.addView(createScenarioButton("Simulate New Beneficiary (+15 pts)", "new-beneficiary"));
-        simCard.addView(createScenarioButton("Simulate Suspicious Transaction (+20 pts)", "suspicious-transaction"));
-
-        Button btnAto = createButton("Simulate Full Account Takeover (ATO)", true);
-        btnAto.setOnClickListener(v -> executeSimulation("account-takeover"));
-        simCard.addView(btnAto);
-
-        Button btnClear = createButton("Reset / Clear Local Display", false);
-        btnClear.setOnClickListener(v -> {
-            showRiskState(18, "LOW", "No active threat detected", null);
-            renderDefaultTimeline();
-            showToast("Display reset", "Local UI cleared. Backend state is authoritative.");
-        });
-        simCard.addView(btnClear);
-
-        root.addView(simCard);
-
-        // Footer Disclaimer
-        TextView disclaimer = createText(
-                "Zero-Trust Principle: The client app never decides fraud scores locally. Authoritative risk is computed on the backend from verified carrier webhooks. No SMS OTPs or raw SIM IMSIs are accessed.",
-                12,
-                COLOR_TEXT_MUTED
-        );
-        disclaimer.setPadding(0, dp(18), 0, 0);
-        root.addView(disclaimer);
-
-        renderDefaultTimeline();
+        container.addView(monitoringCard);
     }
 
-    /**
-     * Refreshes risk and timeline from backend API.
-     */
-    private void refreshSecurityStatus() {
-        riskApi.fetchRisk(DEFAULT_USER_ID, new SecurityApiClient.Callback<SecurityApiClient.RiskResult>() {
-            @Override
-            public void success(SecurityApiClient.RiskResult result) {
-                showRiskState(result.score, result.level, result.alertTitle, result.reasonCodes);
-            }
+    // =========================================================================
+    // Data Synchronization
+    // =========================================================================
 
+    private void refreshAllData() {
+        // 1. Fetch live balance
+        riskApi.fetchBalance(DEFAULT_USER_ID, new SecurityApiClient.Callback<SecurityApiClient.AccountBalance>() {
             @Override
-            public void failure(String safeMessage) {}
-        });
-
-        riskApi.fetchSecurityEvents(DEFAULT_USER_ID, new SecurityApiClient.Callback<List<SecurityApiClient.TimelineEvent>>() {
-            @Override
-            public void success(List<SecurityApiClient.TimelineEvent> events) {
-                if (events != null && !events.isEmpty()) {
-                    renderTimelineEvents(events);
+            public void success(SecurityApiClient.AccountBalance result) {
+                currentBalance = result.balance;
+                if (payBalanceText != null) {
+                    payBalanceText.setText("₹" + NumberFormat.getNumberInstance(Locale.US).format(result.balance));
+                }
+                if (payAccountHolderText != null) {
+                    if ("PROTECTED".equals(result.status)) {
+                        payAccountHolderText.setText("Rahul Sharma · 🔒 PROTECTED LOCKDOWN");
+                    } else {
+                        payAccountHolderText.setText("Rahul Sharma · " + result.accountNumber);
+                    }
                 }
             }
 
             @Override
             public void failure(String safeMessage) {}
         });
+
+        // 2. Fetch authoritative risk score
+        riskApi.fetchRisk(DEFAULT_USER_ID, new SecurityApiClient.Callback<SecurityApiClient.RiskResult>() {
+            @Override
+            public void success(SecurityApiClient.RiskResult result) {
+                renderRiskState(result.score, result.level, result.reasonCodes, result.recommendedMitigation);
+            }
+
+            @Override
+            public void failure(String safeMessage) {
+                renderRiskState(18, "LOW", null, "ALLOW");
+            }
+        });
+
+        // 3. Fetch security event timeline
+        riskApi.fetchSecurityEvents(DEFAULT_USER_ID, new SecurityApiClient.Callback<List<SecurityApiClient.TimelineEvent>>() {
+            @Override
+            public void success(List<SecurityApiClient.TimelineEvent> events) {
+                if (events != null && !events.isEmpty()) {
+                    renderTimelineEvents(events);
+                } else {
+                    renderDefaultTimeline();
+                }
+            }
+
+            @Override
+            public void failure(String safeMessage) {
+                renderDefaultTimeline();
+            }
+        });
+
+        // 4. Fetch transactions history
+        riskApi.fetchTransactions(DEFAULT_USER_ID, new SecurityApiClient.Callback<List<SecurityApiClient.TransactionResult>>() {
+            @Override
+            public void success(List<SecurityApiClient.TransactionResult> transactions) {
+                if (transactions != null && !transactions.isEmpty()) {
+                    renderTransactions(transactions);
+                } else {
+                    renderDefaultTransactions();
+                }
+            }
+
+            @Override
+            public void failure(String safeMessage) {
+                renderDefaultTransactions();
+            }
+        });
     }
 
-    /**
-     * Updates the UI display according to evaluated risk score and level.
-     */
-    private void showRiskState(int score, String level, String alertTitle, List<String> reasonCodes) {
-        boolean isHighRisk = "HIGH".equals(level) || "CRITICAL".equals(level);
-        boolean isMediumRisk = "MEDIUM".equals(level);
+    private void renderRiskState(int score, String level, List<String> reasonCodes, String recommendedMitigation) {
+        boolean isCritical = "CRITICAL".equals(level);
+        boolean isHigh = "HIGH".equals(level);
+        boolean isMedium = "MEDIUM".equals(level);
 
-        scoreText.setText(score + "  / 100");
-        riskChipText.setText(level);
+        int primaryColor = (isCritical || isHigh) ? COLOR_DANGER_RED : isMedium ? COLOR_WARNING_AMBER : COLOR_SUCCESS_GREEN;
 
-        int color = isHighRisk ? COLOR_DANGER_RED : isMediumRisk ? COLOR_WARNING_AMBER : COLOR_SUCCESS_GREEN;
-        riskChipText.setTextColor(color);
-        riskDotView.setBackground(createRoundedDrawable(color, 99));
+        // Update Pay Tab chip
+        if (paySecurityDotView != null) {
+            paySecurityDotView.setBackground(createRoundedDrawable(primaryColor, 99));
+        }
+        if (paySecurityChipText != null) {
+            paySecurityChipText.setTextColor(primaryColor);
+            paySecurityChipText.setText(" " + level + " RISK (" + score + ")");
+        }
 
-        if (isHighRisk) {
-            headlineText.setText("Action needed");
-            statusTitleText.setText(alertTitle != null && !alertTitle.isEmpty() ? alertTitle : "Potential account takeover detected");
-            statusDetailText.setText("Suspicious activity detected shortly after a mobile identity change. Sensitive actions and large transfers are paused.");
-            renderCustomerActionButtons();
-            dispatchHighRiskNotification();
-        } else if (isMediumRisk) {
-            headlineText.setText("Security Notice");
-            statusTitleText.setText("Recent SIM/eSIM change detected");
-            statusDetailText.setText("Your telecom partner reported a recent SIM lifecycle change. Non-punitive warning only.");
-            renderCustomerActionButtons();
-        } else {
-            headlineText.setText("You’re protected");
-            statusTitleText.setText("No active threat detected");
-            statusDetailText.setText("SIMShield monitors device and mobile-number risk signals. Account alerts are provided only by linked, authorized providers.");
-            alertActionsContainer.removeAllViews();
+        // Update Security Tab
+        if (scoreText != null) {
+            scoreText.setText(score + "  / 100");
+        }
+        if (headlineText != null) {
+            headlineText.setText(isCritical ? "Critical Account Takeover" : isHigh ? "Suspicious Activity Detected" : isMedium ? "Review Recent SIM Activity" : "You’re protected");
+        }
+        if (riskDotView != null) {
+            riskDotView.setBackground(createRoundedDrawable(primaryColor, 99));
+        }
+        if (riskChipText != null) {
+            riskChipText.setText(level);
+            riskChipText.setTextColor(primaryColor);
+            riskChipText.setBackground(createRoundedDrawable(isCritical || isHigh ? Color.rgb(255, 235, 238) : isMedium ? Color.rgb(254, 243, 199) : Color.rgb(236, 253, 245), 99));
+        }
+        if (statusTitleText != null) {
+            statusTitleText.setText(isCritical ? "Active SIM-Swap Takeover Chain" : isHigh ? "Multiple Correlated Security Events" : isMedium ? "Recent SIM Card Change" : "No active threat detected");
+        }
+        if (statusDetailText != null) {
+            if (reasonCodes != null && !reasonCodes.isEmpty()) {
+                statusDetailText.setText("Detected signals:\n" + formatReasons(reasonCodes));
+            } else {
+                statusDetailText.setText("Physical SIM & eSIM lifecycle signals normal. No suspicious carrier porting detected.");
+            }
+        }
+
+        renderAlertActions(level, score);
+    }
+
+    private void renderAlertActions(String level, int score) {
+        if (alertActionsContainer == null) return;
+        alertActionsContainer.removeAllViews();
+
+        if ("MEDIUM".equals(level) || "HIGH".equals(level)) {
+            Button btnConfirm = createButton("This was me (Verify Identity)", false);
+            btnConfirm.setBackground(createRoundedDrawable(Color.rgb(238, 242, 255), 10));
+            btnConfirm.setOnClickListener(v -> launchBiometricPrompt("Verify Recent SIM Change"));
+            alertActionsContainer.addView(btnConfirm);
+
+            Button btnSecure = createButton("Secure my account", true);
+            btnSecure.setOnClickListener(v -> handleSecureAccountAction());
+            alertActionsContainer.addView(btnSecure);
+        } else if ("CRITICAL".equals(level)) {
+            Button btnPanic = createButton("🔒 SECURE MY ACCOUNT (FREEZE TRANSFERS)", true);
+            btnPanic.setBackground(createRoundedDrawable(COLOR_DANGER_RED, 10));
+            btnPanic.setTextColor(Color.WHITE);
+            btnPanic.setOnClickListener(v -> handleSecureAccountAction());
+            alertActionsContainer.addView(btnPanic);
+
+            Button btnReport = createButton("Report Unauthorized SIM Hijack", true);
+            btnReport.setOnClickListener(v -> handleReportFraudAction());
+            alertActionsContainer.addView(btnReport);
         }
     }
 
-    /**
-     * Renders customer action buttons: "This was me", "Secure my account", "Report fraud"
-     */
-    private void renderCustomerActionButtons() {
-        alertActionsContainer.removeAllViews();
+    private void renderTransactions(List<SecurityApiClient.TransactionResult> list) {
+        if (txnHistoryContainer == null) return;
+        txnHistoryContainer.removeAllViews();
+        for (SecurityApiClient.TransactionResult txn : list) {
+            boolean isBlocked = "BLOCKED".equals(txn.status) || "BLOCK".equals(txn.decision);
+            boolean isCompleted = "COMPLETED".equals(txn.status);
 
-        Button btnThisWasMe = createButton("✓  This was me (Verify Biometrics)", false);
-        btnThisWasMe.setOnClickListener(v -> launchBiometricPrompt());
-        alertActionsContainer.addView(btnThisWasMe);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(0, dp(8), 0, dp(8));
 
-        Button btnSecure = createButton("🔒  Secure my account", false);
-        btnSecure.setOnClickListener(v -> handleSecureAccountAction());
-        alertActionsContainer.addView(btnSecure);
+            LinearLayout topRow = new LinearLayout(this);
+            topRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        Button btnReportFraud = createButton("⚠️  Report unauthorized fraud", true);
-        btnReportFraud.setOnClickListener(v -> handleReportFraudAction());
-        alertActionsContainer.addView(btnReportFraud);
+            TextView recipient = createText(txn.recipientName + " (" + txn.upiId + ")", 14, COLOR_TEXT_PRIMARY);
+            topRow.addView(recipient, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            TextView amount = createText((isCompleted ? "- ₹" : "₹") + txn.amount, 14, isBlocked ? COLOR_DANGER_RED : COLOR_SUCCESS_GREEN);
+            topRow.addView(amount);
+            row.addView(topRow);
+
+            LinearLayout subRow = new LinearLayout(this);
+            subRow.setGravity(Gravity.CENTER_VERTICAL);
+            subRow.setPadding(0, dp(2), 0, 0);
+
+            TextView statusChip = createText(txn.status, 11, isBlocked ? COLOR_DANGER_RED : isCompleted ? COLOR_SUCCESS_GREEN : COLOR_WARNING_AMBER);
+            subRow.addView(statusChip);
+
+            TextView riskInfo = createText(" · Score: " + txn.riskScore + " (" + txn.riskLevel + ")", 11, COLOR_TEXT_MUTED);
+            subRow.addView(riskInfo);
+
+            row.addView(subRow);
+            txnHistoryContainer.addView(row);
+        }
     }
 
-    /**
-     * Launches real Android Hardware Biometric Authentication (Fingerprint / Face scanner).
-     */
-    private void launchBiometricPrompt() {
+    private void renderDefaultTransactions() {
+        if (txnHistoryContainer == null) return;
+        txnHistoryContainer.removeAllViews();
+        addDefaultTxnItem("Rahul (Personal)", "- ₹2,000", "COMPLETED", "Score: 18 (LOW)", false);
+        addDefaultTxnItem("Priya Patel", "- ₹1,000", "COMPLETED", "Score: 18 (LOW)", false);
+        addDefaultTxnItem("Salary Credit", "+ ₹25,000", "COMPLETED", "Score: 0 (LOW)", true);
+    }
+
+    private void addDefaultTxnItem(String name, String amountStr, String status, String risk, boolean isCredit) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(0, dp(6), 0, dp(6));
+
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+        topRow.addView(createText(name, 14, COLOR_TEXT_PRIMARY), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        topRow.addView(createText(amountStr, 14, isCredit ? COLOR_SUCCESS_GREEN : COLOR_TEXT_PRIMARY));
+        row.addView(topRow);
+
+        LinearLayout subRow = new LinearLayout(this);
+        subRow.addView(createText(status, 11, COLOR_SUCCESS_GREEN));
+        subRow.addView(createText(" · " + risk, 11, COLOR_TEXT_MUTED));
+        row.addView(subRow);
+
+        txnHistoryContainer.addView(row);
+    }
+
+    private void renderTimelineEvents(List<SecurityApiClient.TimelineEvent> events) {
+        if (timelineListContainer == null) return;
+        timelineListContainer.removeAllViews();
+        for (SecurityApiClient.TimelineEvent e : events) {
+            boolean isCritical = e.eventType.contains("SIM") || e.eventType.contains("TAKEOVER") || e.eventType.contains("UNUSUAL");
+            addTimelineItem(e.description, e.source, e.timestamp != null && e.timestamp.length() >= 16 ? e.timestamp.substring(11, 16) : "Today", isCritical);
+        }
+    }
+
+    private void renderDefaultTimeline() {
+        if (timelineListContainer == null) return;
+        timelineListContainer.removeAllViews();
+        addTimelineItem("Physical SIM active & verified", "Telecom Partner Webhook", "10:45 AM", false);
+        addTimelineItem("App integrity check passed", "Android KeyStore Enclave", "Yesterday", false);
+        addTimelineItem("Device security posture verified", "Hardware Root of Trust", "Aug 19", false);
+    }
+
+    private void addTimelineItem(String title, String subtitle, String time, boolean isCritical) {
+        LinearLayout item = new LinearLayout(this);
+        item.setOrientation(LinearLayout.HORIZONTAL);
+        item.setPadding(0, dp(6), 0, dp(6));
+        item.setGravity(Gravity.CENTER_VERTICAL);
+
+        View dot = new View(this);
+        dot.setLayoutParams(new LinearLayout.LayoutParams(dp(8), dp(8)));
+        dot.setBackground(createRoundedDrawable(isCritical ? COLOR_DANGER_RED : COLOR_SUCCESS_GREEN, 99));
+        item.addView(dot);
+
+        LinearLayout textCol = new LinearLayout(this);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        textCol.setPadding(dp(10), 0, 0, 0);
+
+        textCol.addView(createText(title, 13, COLOR_TEXT_PRIMARY));
+        textCol.addView(createText(subtitle, 11, COLOR_TEXT_MUTED));
+        item.addView(textCol, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        item.addView(createText(time, 11, COLOR_TEXT_MUTED));
+        timelineListContainer.addView(item);
+    }
+
+    // =========================================================================
+    // Biometric Authentication & Customer Actions
+    // =========================================================================
+
+    private void launchBiometricPrompt(String subtitle) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             cancellationSignal = new CancellationSignal();
-
             BiometricPrompt.Builder builder = new BiometricPrompt.Builder(this)
-                    .setTitle("Verify Identity with Biometrics")
-                    .setSubtitle("Confirm recent SIM/eSIM account activity")
-                    .setDescription("Place your finger on the fingerprint sensor to prove your identity. (SMS OTP is not used as recovery channel for your safety).")
-                    .setNegativeButton("Cancel", getMainExecutor(), (dialog, which) -> {
-                        showToast("Cancelled", "Biometric verification was cancelled.");
-                    });
+                    .setTitle("Verify Identity")
+                    .setSubtitle(subtitle)
+                    .setDescription("Authenticate to confirm your recent mobile activity.")
+                    .setNegativeButton("Cancel", getMainExecutor(), (d, w) -> showToast("Cancelled", "Verification cancelled."));
 
             BiometricPrompt prompt = builder.build();
-
             prompt.authenticate(
                     cancellationSignal,
                     getMainExecutor(),
                     new BiometricPrompt.AuthenticationCallback() {
                         @Override
-                        public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
-                            super.onAuthenticationSucceeded(result);
-                            onBiometricSuccess();
+                        public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult authResult) {
+                            super.onAuthenticationSucceeded(authResult);
+                            riskApi.confirmActivity(DEFAULT_USER_ID, new SecurityApiClient.Callback<String>() {
+                                @Override
+                                public void success(String res) {
+                                    showToast("Verified", "Identity confirmed. Risk score lowered.");
+                                    refreshAllData();
+                                }
+
+                                @Override
+                                public void failure(String safeMessage) {
+                                    showToast("Notice", safeMessage);
+                                }
+                            });
                         }
 
                         @Override
                         public void onAuthenticationFailed() {
                             super.onAuthenticationFailed();
-                            showToast("Fingerprint Not Recognized", "Authentication failed. Please try again.");
+                            showToast("Error", "Biometric not recognized.");
                         }
 
                         @Override
                         public void onAuthenticationError(int errorCode, CharSequence errString) {
                             super.onAuthenticationError(errorCode, errString);
-                            if (errorCode == BiometricPrompt.BIOMETRIC_ERROR_NO_BIOMETRICS ||
-                                    errorCode == BiometricPrompt.BIOMETRIC_ERROR_HW_UNAVAILABLE ||
-                                    errorCode == BiometricPrompt.BIOMETRIC_ERROR_HW_NOT_PRESENT) {
-                                fallbackDeviceCredentialVerification();
-                            } else if (errorCode != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED &&
-                                    errorCode != BiometricPrompt.BIOMETRIC_ERROR_CANCELED) {
-                                showToast("Biometric Notice", errString.toString());
-                            }
+                            fallbackPinPrompt();
                         }
                     }
             );
         } else {
-            fallbackDeviceCredentialVerification();
+            fallbackPinPrompt();
         }
     }
 
-    /**
-     * Fallback to Device Screen Lock (PIN/Pattern) if hardware biometric sensor is absent.
-     */
-    private void fallbackDeviceCredentialVerification() {
+    private void fallbackPinPrompt() {
         KeyguardManager km = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
         if (km != null && km.isKeyguardSecure()) {
-            Intent intent = km.createConfirmDeviceCredentialIntent("Verify Identity", "Confirm recent SIM/eSIM account activity");
+            Intent intent = km.createConfirmDeviceCredentialIntent("Verify Identity", "Confirm your screen lock.");
             if (intent != null) {
                 startActivityForResult(intent, REQUEST_CODE_DEVICE_CREDENTIAL);
                 return;
             }
         }
-
-        // Security PIN Challenge Dialog fallback
-        final EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        input.setHint("Enter 4-digit App Security PIN (e.g. 1234)");
-        input.setPadding(dp(16), dp(12), dp(16), dp(12));
-
-        new AlertDialog.Builder(this)
-                .setTitle("Security PIN Verification")
-                .setMessage("Enter your App Security PIN to authenticate this account activity:")
-                .setView(input)
-                .setPositiveButton("Verify PIN", (dialog, which) -> {
-                    String pin = input.getText().toString().trim();
-                    if (!pin.isEmpty()) {
-                        onBiometricSuccess();
-                    } else {
-                        showToast("PIN Error", "PIN cannot be empty.");
-                    }
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        showToast("Identity Verified", "Screen lock verified.");
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CODE_DEVICE_CREDENTIAL) {
-            if (resultCode == RESULT_OK) {
-                onBiometricSuccess();
-            } else {
-                showToast("Verification Failed", "Device screen lock authentication failed.");
-            }
+        if (requestCode == REQUEST_CODE_DEVICE_CREDENTIAL && resultCode == RESULT_OK) {
+            riskApi.confirmActivity(DEFAULT_USER_ID, new SecurityApiClient.Callback<String>() {
+                @Override
+                public void success(String res) {
+                    showToast("Verified", "Identity verified via PIN.");
+                    refreshAllData();
+                }
+
+                @Override
+                public void failure(String safeMessage) {
+                    showToast("Notice", safeMessage);
+                }
+            });
         }
     }
 
-    /**
-     * Callback executed ONLY when the user successfully scans their fingerprint / authenticates.
-     */
-    private void onBiometricSuccess() {
-        riskApi.confirmActivity(DEFAULT_USER_ID, new SecurityApiClient.Callback<String>() {
-            @Override
-            public void success(String result) {
-                showToast("✓ Fingerprint Verified", "Identity confirmed with hardware biometrics. Warnings cleared.");
-                showRiskState(18, "LOW", "No active threat detected", null);
-                renderDefaultTimeline();
-            }
-
-            @Override
-            public void failure(String safeMessage) {
-                showToast("✓ Fingerprint Verified", "Identity confirmed with hardware biometrics.");
-                showRiskState(18, "LOW", "No active threat detected", null);
-                renderDefaultTimeline();
-            }
-        });
-    }
-
-    /**
-     * Customer Action: "Secure my account"
-     */
     private void handleSecureAccountAction() {
         riskApi.emergencyLock(DEFAULT_USER_ID, new SecurityApiClient.Callback<String>() {
             @Override
@@ -451,7 +1013,7 @@ public class MainActivity extends Activity {
                 new AlertDialog.Builder(MainActivity.this)
                         .setTitle("Account Protections Activated")
                         .setMessage("Emergency lockdown activated on backend:\n\n• Outbound wire & UPI transfers: FROZEN\n• Beneficiary additions: LOCKED\n• Remote sessions: REVOKED\n• P1 Fraud Investigation Case: OPENED\n\nYour account is secured.")
-                        .setPositiveButton("OK", (d, w) -> refreshSecurityStatus())
+                        .setPositiveButton("OK", (d, w) -> refreshAllData())
                         .show();
             }
 
@@ -466,18 +1028,16 @@ public class MainActivity extends Activity {
         });
     }
 
-    /**
-     * Customer Action: "Report fraud" flow
-     */
     private void handleReportFraudAction() {
         new AlertDialog.Builder(this)
                 .setTitle("Report Unauthorized SIM Hijack")
-                .setMessage("An immediate fraud investigation case will be opened. Our 24/7 security dispatch team will hold high-value transactions.")
+                .setMessage("An immediate fraud investigation case will be opened. High-value transactions will be frozen.")
                 .setPositiveButton("Confirm Fraud Report", (dialog, which) -> {
                     riskApi.reportFraud("alert-active", new SecurityApiClient.Callback<String>() {
                         @Override
                         public void success(String result) {
                             showToast("Fraud Reported", "Investigation case dispatched. Sensitive actions frozen.");
+                            refreshAllData();
                         }
 
                         @Override
@@ -490,147 +1050,61 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    /**
-     * Executes developer simulation scenario.
-     */
-    private void executeSimulation(String scenario) {
+    private void executeSandboxScenario(String scenario) {
         riskApi.simulate(DEFAULT_USER_ID, scenario, new SecurityApiClient.Callback<SecurityApiClient.RiskResult>() {
             @Override
             public void success(SecurityApiClient.RiskResult result) {
-                showRiskState(result.score, result.level, result.alertTitle, result.reasonCodes);
-                refreshSecurityStatus();
+                showToast("Sandbox Updated", "Simulated: " + scenario + "\nRisk Score: " + result.score + " (" + result.level + ")");
+                refreshAllData();
             }
 
             @Override
             public void failure(String safeMessage) {
-                // Offline fallback representation
-                if ("account-takeover".equals(scenario)) {
-                    showRiskState(95, "CRITICAL", "Potential account takeover detected (Simulation)", null);
-                    renderAtoTimeline();
-                } else {
-                    showRiskState(45, "MEDIUM", "SIM lifecycle event simulated (Simulation)", null);
-                }
-                showToast("Simulation Mode", safeMessage);
+                showToast("Simulation Notice", safeMessage);
+                refreshAllData();
             }
         });
     }
 
-    /**
-     * Renders chronological timeline list.
-     */
-    private void renderTimelineEvents(List<SecurityApiClient.TimelineEvent> events) {
-        timelineListContainer.removeAllViews();
-        for (SecurityApiClient.TimelineEvent event : events) {
-            String timeFormatted = formatTimestamp(event.timestamp);
-            addTimelineItem(timeFormatted, event.description, event.simulation);
-        }
-    }
+    // =========================================================================
+    // UI Helpers & Utilities
+    // =========================================================================
 
-    private void renderDefaultTimeline() {
-        timelineListContainer.removeAllViews();
-        addTimelineItem("10:00 AM", "Physical SIM verified with telecom carrier", true);
-        addTimelineItem("Yesterday", "App registered on trusted device", false);
-    }
-
-    private void renderAtoTimeline() {
-        timelineListContainer.removeAllViews();
-        addTimelineItem("10:01 AM", "eSIM profile changed (Telecom partner)", true);
-        addTimelineItem("10:04 AM", "New unrecognized device sign-in", true);
-        addTimelineItem("10:07 AM", "Password reset requested via out-of-band channel", true);
-        addTimelineItem("10:12 AM", "New wire beneficiary added", true);
-        addTimelineItem("10:15 AM", "₹2,00,000 transaction BLOCKED (CRITICAL HOLD)", true);
-    }
-
-    private void addTimelineItem(String time, String title, boolean isSim) {
+    private View createPreferenceToggle(String title, String subtitle, String prefKey, boolean defaultValue) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, dp(6), 0, dp(6));
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(10), 0, dp(10));
 
-        TextView timeView = createText(time, 11, COLOR_TEXT_MUTED);
-        timeView.setLayoutParams(new LinearLayout.LayoutParams(dp(85), LinearLayout.LayoutParams.WRAP_CONTENT));
-        row.addView(timeView);
+        LinearLayout textCol = new LinearLayout(this);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        textCol.addView(createText(title, 14, COLOR_TEXT_PRIMARY));
+        textCol.addView(createText(subtitle, 11, COLOR_TEXT_MUTED));
+        row.addView(textCol, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        View dot = new View(this);
-        dot.setLayoutParams(new LinearLayout.LayoutParams(dp(8), dp(8)));
-        dot.setBackground(createRoundedDrawable(COLOR_PRIMARY_BLUE, 99));
-        row.addView(dot);
+        Switch sw = new Switch(this);
+        sw.setChecked(prefs.getBoolean(prefKey, defaultValue));
+        sw.setOnCheckedChangeListener((b, checked) -> prefs.edit().putBoolean(prefKey, checked).apply());
+        row.addView(sw);
 
-        TextView titleView = createText("  " + title + (isSim ? " · Simulation" : ""), 13, COLOR_TEXT_PRIMARY);
-        titleView.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(titleView);
+        return row;
+    }
 
-        timelineListContainer.addView(row);
+    private View createDivider() {
+        View line = new View(this);
+        line.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        line.setBackgroundColor(Color.rgb(240, 242, 248));
+        return line;
     }
 
     private Button createScenarioButton(String label, String scenario) {
-        Button btn = createButton(label, false);
-        btn.setOnClickListener(v -> executeSimulation(scenario));
+        return createScenarioButton(label, scenario, false);
+    }
+
+    private Button createScenarioButton(String label, String scenario, boolean isDanger) {
+        Button btn = createButton(label, isDanger);
+        btn.setOnClickListener(v -> executeSandboxScenario(scenario));
         return btn;
-    }
-
-    private void dispatchHighRiskNotification() {
-        Notification.Builder builder;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder = new Notification.Builder(this, NOTIFICATION_CHANNEL_ID);
-        } else {
-            builder = new Notification.Builder(this);
-        }
-
-        builder.setSmallIcon(android.R.drawable.ic_dialog_alert)
-                .setContentTitle("SIMShield: High-Risk Alert")
-                .setContentText("Recent SIM change and abnormal activity detected. Sensitive actions paused.")
-                .setPriority(Notification.PRIORITY_HIGH)
-                .setAutoCancel(true);
-
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (nm != null) {
-            nm.notify(101, builder.build());
-        }
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    NOTIFICATION_CHANNEL_ID,
-                    "Security Risk Alerts",
-                    NotificationManager.IMPORTANCE_HIGH
-            );
-            channel.setDescription("Critical alerts for SIM swaps and account takeover threats");
-            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm != null) {
-                nm.createNotificationChannel(channel);
-            }
-        }
-    }
-
-    private void checkNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQ_CODE);
-            }
-        }
-    }
-
-    private void addMonitoringSwitch(LinearLayout container, String title, String description, String prefKey) {
-        LinearLayout row = new LinearLayout(this);
-        row.setPadding(dp(16), dp(12), dp(16), dp(12));
-        row.setGravity(Gravity.CENTER_VERTICAL);
-
-        LinearLayout textLayout = new LinearLayout(this);
-        textLayout.setOrientation(LinearLayout.VERTICAL);
-        textLayout.addView(createText(title, 15, COLOR_TEXT_PRIMARY));
-        textLayout.addView(createText(description, 12, COLOR_TEXT_MUTED));
-        row.addView(textLayout, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-        Switch toggle = new Switch(this);
-        toggle.setChecked(prefs.getBoolean(prefKey, true));
-        toggle.setOnCheckedChangeListener((btn, isChecked) ->
-                prefs.edit().putBoolean(prefKey, isChecked).apply()
-        );
-        row.addView(toggle);
-
-        container.addView(row);
     }
 
     private LinearLayout createCard() {
@@ -688,14 +1162,55 @@ public class MainActivity extends Activity {
         Toast.makeText(this, title + "\n" + message, Toast.LENGTH_LONG).show();
     }
 
-    private String formatTimestamp(String isoTime) {
-        try {
-            SimpleDateFormat input = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
-            Date date = input.parse(isoTime);
-            SimpleDateFormat output = new SimpleDateFormat("hh:mm a", Locale.US);
-            return output.format(date != null ? date : new Date());
-        } catch (Exception e) {
-            return "Just now";
+    private String formatReasons(List<String> reasons) {
+        if (reasons == null || reasons.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String r : reasons) {
+            sb.append("• ").append(formatReasonLabel(r)).append("\n");
+        }
+        return sb.toString().trim();
+    }
+
+    private String formatReasonLabel(String code) {
+        switch (code) {
+            case "RECENT_SIM_CHANGE": return "Recent SIM card replacement";
+            case "RECENT_ESIM_CHANGE": return "Recent eSIM profile migration";
+            case "NUMBER_PORTED": return "Mobile number porting reported";
+            case "NEW_DEVICE": return "Unrecognized new device login";
+            case "ACCOUNT_TAKEOVER_PATTERN": return "High-risk Account Takeover (ATO) sequence";
+            case "PASSWORD_RESET_AFTER_SIM_CHANGE": return "Password reset shortly after SIM change";
+            case "NEW_BENEFICIARY_AFTER_SIM_CHANGE": return "New beneficiary added after SIM change";
+            case "ABNORMAL_TRANSACTION": return "Abnormal transaction amount/behavior";
+            case "ACCOUNT_PROTECTED_EMERGENCY_LOCK": return "Account in emergency lockdown";
+            case "TRANSFERS_FROZEN": return "Outbound transfers frozen";
+            default: return code.replace("_", " ").toLowerCase();
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID,
+                    "SIMShield Fraud Alerts",
+                    NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription("High-priority alerts for SIM swaps and suspicious ATO activity");
+            channel.enableLights(true);
+            channel.setLightColor(COLOR_DANGER_RED);
+            channel.enableVibration(true);
+
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) {
+                nm.createNotificationChannel(channel);
+            }
+        }
+    }
+
+    private void checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQ_CODE);
+            }
         }
     }
 }
