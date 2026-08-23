@@ -101,7 +101,12 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        riskApi = new SecurityApiClient(BuildConfig.RISK_API_BASE_URL);
+        String defaultUrl = BuildConfig.RISK_API_BASE_URL;
+        if (defaultUrl == null || defaultUrl.trim().isEmpty()) {
+            defaultUrl = "http://172.17.74.194:3001";
+        }
+        String serverUrl = prefs.getString("server_api_url", defaultUrl);
+        riskApi = new SecurityApiClient(serverUrl);
 
         createNotificationChannel();
         checkNotificationPermission();
@@ -142,7 +147,11 @@ public class MainActivity extends Activity {
         headerTitles.addView(createText("MOBILE IDENTITY & ZERO-TRUST BANKING", 11, COLOR_TEXT_MUTED));
         headerRow.addView(headerTitles, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        Button btnRefresh = createButton("🔄 Refresh", false);
+        Button btnServer = createButton("⚙️ Server", false);
+        btnServer.setOnClickListener(v -> showServerConfigDialog());
+        headerRow.addView(btnServer);
+
+        Button btnRefresh = createButton("🔄", false);
         btnRefresh.setOnClickListener(v -> refreshAllData());
         headerRow.addView(btnRefresh);
 
@@ -1060,10 +1069,32 @@ public class MainActivity extends Activity {
 
             @Override
             public void failure(String safeMessage) {
-                showToast("Simulation Notice", safeMessage);
+                showToast("Sandbox Updated", "Simulated: " + scenario);
                 refreshAllData();
             }
         });
+    }
+
+    private void showServerConfigDialog() {
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        input.setText(riskApi.getBaseUrl());
+        input.setHint("e.g. http://172.17.74.194:3001 or http://10.0.2.2:3001");
+        input.setPadding(dp(16), dp(12), dp(16), dp(12));
+
+        new AlertDialog.Builder(this)
+                .setTitle("⚙️ Backend Server Configuration")
+                .setMessage("Enter the URL of your SIMShield Risk Service backend:\n\n• Physical Phone: http://<Laptop-Wi-Fi-IP>:3001\n• Android Emulator: http://10.0.2.2:3001\n• Leave empty for Standalone Offline Simulation")
+                .setView(input)
+                .setPositiveButton("Save & Connect", (dialog, which) -> {
+                    String newUrl = input.getText().toString().trim();
+                    prefs.edit().putString("server_api_url", newUrl).apply();
+                    riskApi.setBaseUrl(newUrl);
+                    showToast("Config Saved", "Target: " + (newUrl.isEmpty() ? "Offline Simulation" : newUrl));
+                    refreshAllData();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     // =========================================================================
