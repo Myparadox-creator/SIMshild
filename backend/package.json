@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/server.mjs",
     "dev": "node --watch src/server.mjs",
-    "test": "node --test test/**/*.test.mjs",
+    "test": "node --test",
     "db:migrate": "node db/migrate.mjs"
   },
   "engines": {
