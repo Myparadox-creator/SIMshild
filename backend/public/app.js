@@ -28,12 +28,18 @@
     userSelect: document.getElementById('user-select'),
     btnResetState: document.getElementById('btn-reset-state'),
     btnCustomEvent: document.getElementById('btn-custom-event'),
-
+    metricBankBalance: document.getElementById('metric-bank-balance'),
+    metricAccountStatus: document.getElementById('metric-account-status'),
     metricTotalEvents: document.getElementById('metric-total-events'),
     metricActiveAlerts: document.getElementById('metric-active-alerts'),
     metricAlertBadge: document.getElementById('metric-alert-badge'),
     metricOpenCases: document.getElementById('metric-open-cases'),
     metricHeldTxns: document.getElementById('metric-held-txns'),
+
+    demoPayRecipient: document.getElementById('demo-pay-recipient'),
+    demoPayUpi: document.getElementById('demo-pay-upi'),
+    demoPayAmount: document.getElementById('demo-pay-amount'),
+    paymentResultBox: document.getElementById('payment-result-box'),
 
     riskLevelBadge: document.getElementById('risk-level-badge'),
     gaugeFillPath: document.getElementById('gauge-fill-path'),
@@ -295,7 +301,19 @@
       state.cases = cases;
       renderCasesAndAlerts(cases, alerts);
 
-      // 5. Fetch telemetry metrics
+      // 5. Fetch mock bank balance and account status
+      try {
+        const account = await apiFetch(`/api/users/${state.currentUser}/balance`);
+        if (elements.metricBankBalance) {
+          elements.metricBankBalance.textContent = `₹${(account.balance || 0).toLocaleString('en-IN')}`;
+        }
+        if (elements.metricAccountStatus) {
+          elements.metricAccountStatus.textContent = account.status || 'ACTIVE';
+          elements.metricAccountStatus.className = `metric-trend ${account.status === 'PROTECTED' ? 'text-danger' : 'text-success'}`;
+        }
+      } catch {}
+
+      // 6. Fetch telemetry metrics
       const metrics = await apiFetch(`/api/metrics`);
       state.metrics = metrics;
       elements.metricTotalEvents.textContent = metrics.totalEvents || events.length;
@@ -503,6 +521,97 @@
     renderTimeline(state.events);
   }
 
+  /**
+   * Public Action: Test Mock UPI Payment from SecOps Dashboard
+   */
+  async function testMockPayment() {
+    const recipient = elements.demoPayRecipient ? elements.demoPayRecipient.value : 'Rahul (Personal)';
+    const upiId = elements.demoPayUpi ? elements.demoPayUpi.value : 'rahul@mockbank';
+    const amount = Number(elements.demoPayAmount ? elements.demoPayAmount.value : 2000) || 2000;
+
+    logConsole(`[Payment Pre-check] Initiating ₹${amount} to ${recipient} (${upiId})...`, 'info');
+
+    try {
+      // 1. Pre-check
+      const precheck = await apiFetch('/api/transactions/precheck', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: state.currentUser,
+          recipientName: recipient,
+          upiId,
+          amount,
+          currency: 'INR',
+          channel: 'MOCK_UPI'
+        })
+      });
+
+      if (elements.paymentResultBox) {
+        elements.paymentResultBox.style.display = 'block';
+      }
+
+      if (precheck.decision === 'ALLOW') {
+        logConsole(`🟢 Pre-check: ALLOW (Risk Score: ${precheck.riskScore}/100, ${precheck.riskLevel}). Authorizing & Executing transfer...`, 'success');
+        
+        // 2. Authorize & Execute
+        const exec = await apiFetch('/api/transactions/execute', {
+          method: 'POST',
+          body: JSON.stringify({
+            transactionId: precheck.transactionId,
+            userId: state.currentUser
+          })
+        });
+
+        logConsole(`✅ Funds Transferred! Balance debited: ₹${exec.previousBalance} ➔ ₹${exec.newBalance}`, 'success');
+        if (elements.paymentResultBox) {
+          elements.paymentResultBox.style.background = 'rgba(18, 123, 83, 0.15)';
+          elements.paymentResultBox.style.color = 'var(--color-low)';
+          elements.paymentResultBox.innerHTML = `<strong>🟢 Payment Completed:</strong> ₹${amount} sent to ${recipient}. New balance: ₹${(exec.newBalance || 0).toLocaleString('en-IN')}`;
+        }
+      } else if (precheck.decision === 'REQUIRE_VERIFICATION') {
+        logConsole(`🟡 Pre-check: REQUIRE_VERIFICATION (Risk Score: ${precheck.riskScore}/100, ${precheck.riskLevel}). Reasons: ${precheck.reasonCodes.join(', ')}`, 'warn');
+        if (elements.paymentResultBox) {
+          elements.paymentResultBox.style.background = 'rgba(217, 119, 6, 0.15)';
+          elements.paymentResultBox.style.color = 'var(--color-warning)';
+          elements.paymentResultBox.innerHTML = `<strong>🟡 Verification Required:</strong> Risk score ${precheck.riskScore}/100 (${precheck.riskLevel}). Complete biometric step-up on your Android phone.`;
+        }
+      } else {
+        logConsole(`🔴 🚨 TRANSACTION BLOCKED! Risk Score: ${precheck.riskScore}/100 (${precheck.riskLevel}). Reasons: ${precheck.reasonCodes.join(', ')}. Money was NOT transferred!`, 'danger');
+        if (elements.paymentResultBox) {
+          elements.paymentResultBox.style.background = 'rgba(187, 35, 67, 0.15)';
+          elements.paymentResultBox.style.color = 'var(--color-critical)';
+          elements.paymentResultBox.innerHTML = `<strong>🔴 🚨 TRANSACTION BLOCKED:</strong> Risk ${precheck.riskScore}/100 (${precheck.riskLevel}). Reasons: ${precheck.reasonCodes.join(', ')}. <em>Your bank balance was NOT debited.</em>`;
+        }
+      }
+
+      await refreshDashboard();
+    } catch (err) {
+      logConsole(`Payment failed: ${err.message}`, 'danger');
+      if (elements.paymentResultBox) {
+        elements.paymentResultBox.style.display = 'block';
+        elements.paymentResultBox.style.background = 'rgba(187, 35, 67, 0.15)';
+        elements.paymentResultBox.style.color = 'var(--color-critical)';
+        elements.paymentResultBox.innerHTML = `<strong>Error:</strong> ${err.message}`;
+      }
+    }
+  }
+
+  /**
+   * Public Action: Trigger Emergency Lockdown
+   */
+  async function triggerEmergencyLock() {
+    try {
+      logConsole(`Activating emergency lockdown ("Secure My Account") for '${state.currentUser}'...`, 'danger');
+      const res = await apiFetch('/api/security/emergency-lock', {
+        method: 'POST',
+        body: JSON.stringify({ userId: state.currentUser, reason: 'CUSTOMER_INITIATED_PANIC_LOCK' })
+      });
+      logConsole(`🔒 Account status updated to PROTECTED. Outbound transfers frozen, sessions revoked. Investigation case #${res.caseId.slice(0, 8)} opened.`, 'success');
+      await refreshDashboard();
+    } catch (err) {
+      logConsole(`Emergency lock failed: ${err.message}`, 'danger');
+    }
+  }
+
   function clearLogs() {
     if (elements.simConsole) elements.simConsole.innerHTML = '';
   }
@@ -539,7 +648,9 @@
     closeModal,
     closeInspector,
     setFilter,
-    clearLogs
+    clearLogs,
+    testMockPayment,
+    triggerEmergencyLock
   };
 
   // Start app on DOM ready

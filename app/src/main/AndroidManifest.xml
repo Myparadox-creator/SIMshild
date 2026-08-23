@@ -8,13 +8,28 @@
     android:allowBackup="true" 
     android:label="SIMShield" 
     android:theme="@style/AppTheme">
+
+    <!-- App 1: SIMShield Security Defense Center -->
     <activity 
       android:name=".MainActivity" 
+      android:label="SIMShield Security"
       android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
     </activity>
+
+    <!-- App 2: SIMShield Pay — Mock UPI Application -->
+    <activity 
+      android:name=".MockPaymentActivity" 
+      android:label="SIMShield Pay"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+
   </application>
 </manifest>

@@ -6,6 +6,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { hashIdentifier } from './crypto.mjs';
+import { MockBank } from './banking/mock-bank.mjs';
+import { TransactionManager } from './banking/transaction-manager.mjs';
 
 /**
  * Standardized Mobile Identity and Security Event Types.
@@ -201,6 +203,17 @@ export function validateEvent(input) {
 }
 
 /**
+ * Authoritative Transaction Decisions.
+ * @enum {string}
+ */
+export const TransactionDecision = Object.freeze({
+  ALLOW: 'ALLOW',
+  REQUIRE_VERIFICATION: 'REQUIRE_VERIFICATION',
+  HOLD: 'HOLD',
+  BLOCK: 'BLOCK'
+});
+
+/**
  * Extensible Base FraudRiskEngine Interface.
  * Allows pluggable implementations (RuleBasedRiskEngine, MLRiskEngine, HybridRiskEngine).
  */
@@ -213,6 +226,17 @@ export class FraudRiskEngine {
    */
   calculateRisk(events = [], now = Date.now()) {
     throw new Error('Method calculateRisk() must be implemented by concrete risk engine.');
+  }
+
+  /**
+   * Calculates risk evaluation specifically in the context of a payment transaction.
+   * @param {Array<object>} events
+   * @param {object} transaction
+   * @param {number} [now]
+   * @returns {object}
+   */
+  evaluateTransactionRisk(events = [], transaction = {}, now = Date.now()) {
+    throw new Error('Method evaluateTransactionRisk() must be implemented by concrete risk engine.');
   }
 }
 
@@ -317,14 +341,94 @@ export class RuleBasedRiskEngine extends FraudRiskEngine {
       correlationWindowEndsAt: new Date(now + this.rules.correlationWindowMs).toISOString()
     };
   }
+
+  /**
+   * Authoritatively evaluates risk for an in-flight payment transaction proposal.
+   * @param {Array<object>} events - User's security events history
+   * @param {object} transaction - Proposed transaction details (amount, beneficiary, channel)
+   * @param {number} [now=Date.now()] - Reference timestamp
+   * @returns {object} Authoritative transaction decision and risk metrics
+   */
+  evaluateTransactionRisk(events = [], transaction = {}, now = Date.now()) {
+    const baseRisk = this.calculateRisk(events, now);
+    let rawScore = baseRisk.riskScore;
+    const reasons = new Set(baseRisk.reasonCodes);
+    const relatedEventIds = [...baseRisk.relatedEventIds];
+
+    const recent = events.filter((e) => {
+      if (!e || e.riskRelevant === false) return false;
+      const eventTime = Date.parse(e.timestamp);
+      return !isNaN(eventTime) && now - eventTime <= this.rules.correlationWindowMs;
+    });
+
+    const mobileEvents = recent.filter((e) => MOBILE_IDENTITY_EVENTS.has(e.eventType));
+    const hasMobileIdentityChange = mobileEvents.length > 0;
+    const hasNewDevice = recent.some((e) =>
+      [EventType.NEW_DEVICE_LOGIN, EventType.DEVICE_CHANGED].includes(e.eventType)
+    );
+    const hasPasswordReset = recent.some((e) =>
+      [EventType.PASSWORD_RESET, EventType.PIN_RESET].includes(e.eventType)
+    );
+    const hasNewBeneficiaryEvent = recent.some((e) => e.eventType === EventType.NEW_BENEFICIARY);
+
+    if (hasMobileIdentityChange && hasNewBeneficiaryEvent) {
+      reasons.add('NEW_BENEFICIARY_AFTER_SIM_CHANGE');
+    } else if (hasMobileIdentityChange && transaction.isNewBeneficiary) {
+      reasons.add('NEW_BENEFICIARY_AFTER_SIM_CHANGE');
+      rawScore += 15;
+    }
+
+    const amount = Number(transaction.amount) || 0;
+    if (amount >= 50000 || (hasMobileIdentityChange && amount >= 20000)) {
+      reasons.add('ABNORMAL_TRANSACTION');
+      rawScore += 20;
+    }
+
+    // High correlation ATO: SIM change + new device + (password reset or new beneficiary)
+    if (hasMobileIdentityChange && hasNewDevice && (hasPasswordReset || hasNewBeneficiaryEvent)) {
+      reasons.add('ACCOUNT_TAKEOVER_PATTERN');
+      if (rawScore < 85) rawScore = 95;
+    }
+
+    const riskScore = Math.min(this.rules.maxScore, rawScore);
+
+    let riskLevel = RiskLevel.LOW;
+    let decision = TransactionDecision.ALLOW;
+
+    if (riskScore >= 80) {
+      riskLevel = RiskLevel.CRITICAL;
+      decision = TransactionDecision.BLOCK;
+    } else if (riskScore >= 50) {
+      riskLevel = RiskLevel.HIGH;
+      decision = TransactionDecision.REQUIRE_VERIFICATION;
+    } else if (riskScore >= 30) {
+      riskLevel = RiskLevel.MEDIUM;
+      decision = TransactionDecision.REQUIRE_VERIFICATION;
+    } else {
+      riskLevel = RiskLevel.LOW;
+      decision = TransactionDecision.ALLOW;
+    }
+
+    return {
+      riskScore,
+      riskLevel,
+      decision,
+      reasonCodes: Array.from(reasons),
+      relatedEventIds,
+      recommendedMitigation: baseRisk.recommendedMitigation,
+      evaluatedAt: new Date(now).toISOString()
+    };
+  }
 }
 
 /**
  * In-Memory Risk Repository implementation.
  */
 export class InMemoryRiskRepository {
-  constructor(engine = new RuleBasedRiskEngine()) {
+  constructor(engine = new RuleBasedRiskEngine(), mockBank = new MockBank()) {
     this.engine = engine;
+    this.mockBank = mockBank;
+    this.transactionManager = new TransactionManager(this, this.mockBank, this.engine);
     this.events = [];
     this.alerts = [];
     this.cases = [];
@@ -497,16 +601,91 @@ export class InMemoryRiskRepository {
     };
   }
 
+  // Banking & Account Management
+  getAccount(userId) {
+    return this.mockBank.getAccount(userId);
+  }
+
+  getBeneficiaries(userId) {
+    return this.mockBank.getBeneficiaries(userId);
+  }
+
+  addBeneficiary(userId, beneficiaryData) {
+    return this.mockBank.addBeneficiary(userId, beneficiaryData);
+  }
+
+  emergencyLock(userId, reason = 'CUSTOMER_INITIATED_PANIC_LOCK') {
+    const lockResult = this.mockBank.emergencyLock(userId, reason);
+
+    const event = validateEvent({
+      userId,
+      eventType: EventType.FAILED_AUTH_ATTEMPTS,
+      source: Source.BACKEND,
+      platform: 'ANDROID',
+      timestamp: lockResult.lockedAt,
+      metadata: {
+        action: 'EMERGENCY_LOCKDOWN',
+        status: 'PROTECTED',
+        reason
+      },
+      riskRelevant: true,
+      simulation: true
+    });
+    this.events.push(event);
+
+    const caseId = randomUUID();
+    this.cases.push({
+      caseId,
+      userId,
+      alertId: randomUUID(),
+      title: `Emergency Lockdown Activated: ${userId}`,
+      riskScore: 100,
+      status: 'PROTECTED',
+      createdAt: lockResult.lockedAt,
+      simulation: true
+    });
+
+    return {
+      ...lockResult,
+      caseId
+    };
+  }
+
+  // Transaction Orchestration
+  precheckTransaction(params) {
+    return this.transactionManager.precheckTransaction(params);
+  }
+
+  verifyAndAuthorizeTransaction(transactionId, verificationMethod) {
+    return this.transactionManager.verifyAndAuthorizeTransaction(transactionId, verificationMethod);
+  }
+
+  executeTransaction(transactionId, userId) {
+    return this.transactionManager.executeTransaction(transactionId, userId);
+  }
+
+  getTransaction(transactionId) {
+    return this.transactionManager.getTransaction(transactionId);
+  }
+
+  getTransactionsForUser(userId) {
+    return this.transactionManager.getTransactionsForUser(userId);
+  }
+
   resetUser(userId) {
     if (userId) {
       this.events = this.events.filter((e) => e.userId !== userId);
       this.alerts = this.alerts.filter((a) => a.userId !== userId);
       this.cases = this.cases.filter((c) => c.userId !== userId);
+      this.mockBank.reset(userId);
+      this.transactionManager.reset(userId);
     } else {
       this.events = [];
       this.alerts = [];
       this.cases = [];
       this.trustedDevices.clear();
+      this.mockBank.reset();
+      this.transactionManager.reset();
     }
   }
 }

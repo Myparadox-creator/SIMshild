@@ -47,4 +47,40 @@ export class RiskRepository {
   async resetUser(userId) {
     throw new Error('Method resetUser() must be implemented');
   }
+
+  async getAccount(userId) {
+    throw new Error('Method getAccount() must be implemented');
+  }
+
+  async getBeneficiaries(userId) {
+    throw new Error('Method getBeneficiaries() must be implemented');
+  }
+
+  async addBeneficiary(userId, beneficiaryData) {
+    throw new Error('Method addBeneficiary() must be implemented');
+  }
+
+  async emergencyLock(userId, reason) {
+    throw new Error('Method emergencyLock() must be implemented');
+  }
+
+  async precheckTransaction(params) {
+    throw new Error('Method precheckTransaction() must be implemented');
+  }
+
+  async verifyAndAuthorizeTransaction(transactionId, verificationMethod) {
+    throw new Error('Method verifyAndAuthorizeTransaction() must be implemented');
+  }
+
+  async executeTransaction(transactionId, userId) {
+    throw new Error('Method executeTransaction() must be implemented');
+  }
+
+  async getTransaction(transactionId) {
+    throw new Error('Method getTransaction() must be implemented');
+  }
+
+  async getTransactionsForUser(userId) {
+    throw new Error('Method getTransactionsForUser() must be implemented');
+  }
 }

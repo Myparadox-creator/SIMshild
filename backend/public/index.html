@@ -68,6 +68,14 @@
     <!-- Metrics Ribbon -->
     <section class="metrics-ribbon" aria-label="System Metrics">
       <div class="metric-card">
+        <span class="metric-label">Simulated Bank Balance</span>
+        <div class="metric-value-row">
+          <span class="metric-number text-success" id="metric-bank-balance">₹10,000</span>
+          <span class="metric-trend" id="metric-account-status">ACTIVE</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
         <span class="metric-label">Ingested Signals (24h)</span>
         <div class="metric-value-row">
           <span class="metric-number" id="metric-total-events">0</span>
@@ -92,10 +100,10 @@
       </div>
 
       <div class="metric-card">
-        <span class="metric-label">Held Transactions</span>
+        <span class="metric-label">Held / Blocked Txns</span>
         <div class="metric-value-row">
           <span class="metric-number" id="metric-held-txns">0</span>
-          <span class="metric-trend text-warning">Auto-Mitigated</span>
+          <span class="metric-trend text-warning">Zero Loss</span>
         </div>
       </div>
     </section>
@@ -267,8 +275,47 @@
             </div>
             <div class="console-output" id="sim-console-output">
               <div class="console-line info">[System] SIMShield SecOps Studio initialized in Sandbox mode.</div>
-              <div class="console-line">[Ready] Select an attack scenario above or craft custom signals.</div>
+              <div class="console-line">[Ready] Select an attack scenario above or test mock UPI transactions.</div>
             </div>
+          </div>
+        </article>
+
+        <!-- Mock UPI Payment Simulation Card -->
+        <article class="panel-card" id="panel-mock-payment-studio" style="margin-top: 1.25rem;">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">💳 SIMShield Pay — Mock Transaction Gateway</h2>
+              <p class="panel-desc">Test real-time pre-check interception before bank execution</p>
+            </div>
+            <span class="badge-tag live-tag">MOCK UPI</span>
+          </div>
+
+          <div style="padding: 0.5rem 0;">
+            <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
+              <div style="flex: 1;">
+                <label style="font-size: 0.8rem; color: var(--color-text-muted);">Recipient</label>
+                <input type="text" id="demo-pay-recipient" class="form-control" value="Rahul (Personal)" style="padding: 0.4rem 0.6rem; font-size: 0.85rem;">
+              </div>
+              <div style="flex: 1;">
+                <label style="font-size: 0.8rem; color: var(--color-text-muted);">UPI ID</label>
+                <input type="text" id="demo-pay-upi" class="form-control" value="rahul@mockbank" style="padding: 0.4rem 0.6rem; font-size: 0.85rem;">
+              </div>
+              <div style="width: 110px;">
+                <label style="font-size: 0.8rem; color: var(--color-text-muted);">Amount (₹)</label>
+                <input type="number" id="demo-pay-amount" class="form-control" value="2000" style="padding: 0.4rem 0.6rem; font-size: 0.85rem;">
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="window.SimShieldApp.testMockPayment()">
+                💸 Execute Payment (Pre-Check → Authorize)
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="window.SimShieldApp.triggerEmergencyLock()">
+                🔒 Emergency Panic Lock
+              </button>
+            </div>
+
+            <div id="payment-result-box" style="margin-top: 0.75rem; display: none; padding: 0.6rem 0.8rem; border-radius: 6px; font-size: 0.85rem;"></div>
           </div>
         </article>
 

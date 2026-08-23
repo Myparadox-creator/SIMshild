@@ -99,10 +99,23 @@ public class MainActivity extends Activity {
         scrollView.addView(root);
         setContentView(scrollView);
 
-        // Header Title
-        TextView appTitle = createText("SIMShield Mobile Security", 22, COLOR_TEXT_PRIMARY);
-        appTitle.setPadding(0, dp(4), 0, dp(14));
-        root.addView(appTitle);
+        // Header Row
+        LinearLayout headerRow = new LinearLayout(this);
+        headerRow.setOrientation(LinearLayout.HORIZONTAL);
+        headerRow.setGravity(Gravity.CENTER_VERTICAL);
+        headerRow.setPadding(0, dp(4), 0, dp(14));
+
+        TextView appTitle = createText("SIMShield Security", 22, COLOR_TEXT_PRIMARY);
+        headerRow.addView(appTitle, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        Button btnOpenPay = createButton("💳 SIMShield Pay", false);
+        btnOpenPay.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, MockPaymentActivity.class);
+            startActivity(intent);
+        });
+        headerRow.addView(btnOpenPay);
+
+        root.addView(headerRow);
 
         // 1. Hero Score & Risk Card
         LinearLayout heroCard = createBox(COLOR_PRIMARY_BLUE, 20);
@@ -432,11 +445,25 @@ public class MainActivity extends Activity {
      * Customer Action: "Secure my account"
      */
     private void handleSecureAccountAction() {
-        new AlertDialog.Builder(this)
-                .setTitle("Account Protections Activated")
-                .setMessage("We have temporarily restricted wire transfers, beneficiary additions, and credential changes. Your account is secured.")
-                .setPositiveButton("OK", null)
-                .show();
+        riskApi.emergencyLock(DEFAULT_USER_ID, new SecurityApiClient.Callback<String>() {
+            @Override
+            public void success(String result) {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("Account Protections Activated")
+                        .setMessage("Emergency lockdown activated on backend:\n\n• Outbound wire & UPI transfers: FROZEN\n• Beneficiary additions: LOCKED\n• Remote sessions: REVOKED\n• P1 Fraud Investigation Case: OPENED\n\nYour account is secured.")
+                        .setPositiveButton("OK", (d, w) -> refreshSecurityStatus())
+                        .show();
+            }
+
+            @Override
+            public void failure(String safeMessage) {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("Account Protections Activated")
+                        .setMessage("Transfers and beneficiary additions restricted.")
+                        .setPositiveButton("OK", null)
+                        .show();
+            }
+        });
     }
 
     /**

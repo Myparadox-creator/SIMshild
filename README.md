@@ -198,12 +198,16 @@ Signals are correlated within a **24-hour sliding window** and capped at **100 p
 | `GET` | `/api/users/{id}/risk` | Authoritative risk score, level, and reason codes |
 | `GET` | `/api/users/{id}/security-events` | Chronological event timeline for the subject |
 | `GET` | `/api/users/{id}/fraud-alerts` | Active fraud alerts for the subject |
-| `POST` | `/api/fraud-alerts/{id}/acknowledge` | Acknowledge security warning banner |
-| `POST` | `/api/fraud-alerts/{id}/report` | Report unauthorized fraud & open incident case |
+| `GET` | `/api/users/{id}/balance` | Live mock bank balance and account status |
+| `GET` | `/api/users/{id}/transactions` | Ledger transaction history with risk audit metadata |
+| `POST` | `/api/transactions/precheck` | Pre-transaction fraud risk evaluation & decision (`ALLOW`/`BLOCK`) |
+| `POST` | `/api/transactions/verify` | Step-up biometric authentication confirmation |
+| `POST` | `/api/transactions/execute` | Authoritative mock bank debit/credit execution |
+| `POST` | `/api/security/emergency-lock` | Panic lockdown: freeze transfers, revoke sessions, open P1 case |
 | `POST` | `/api/security/confirm-activity` | "This was me" out-of-band biometric confirmation |
 | `GET` | `/api/cases` | List all open fraud mitigation cases |
 | `POST` | `/api/cases/{id}/{action}` | Case actions (`RESOLVE`, `HOLD`, `RELEASE`) |
-| `POST` | `/api/simulation/{scenario}` | Dev sandbox (`sim-swap`, `esim-change`, `number-port`, `account-takeover`) |
+| `POST` | `/api/simulation/{scenario}` | Dev sandbox (`sim-swap`, `esim-change`, `new-device`, `account-takeover`, `reset`) |
 
 ---
 

@@ -24,6 +24,16 @@ export async function simulateScenario(repo, userId, scenario) {
   // Normalize scenario names (support kebab-case and camelCase)
   const normalized = scenario.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
+  if (normalized === 'reset') {
+    await repo.resetUser(userId);
+    return [{
+      status: 'RESET_COMPLETED',
+      userId,
+      risk: { riskScore: 0, riskLevel: 'LOW', reasonCodes: [], recommendedMitigation: 'ALLOW' },
+      balance: 10000
+    }];
+  }
+
   const scenarioMap = {
     simSwap: EventType.SIM_CHANGED,
     esimChange: EventType.ESIM_CHANGED,
@@ -31,7 +41,8 @@ export async function simulateScenario(repo, userId, scenario) {
     newDevice: EventType.NEW_DEVICE_LOGIN,
     passwordReset: EventType.PASSWORD_RESET,
     newBeneficiary: EventType.NEW_BENEFICIARY,
-    suspiciousTransaction: EventType.UNUSUAL_TRANSACTION
+    suspiciousTransaction: EventType.UNUSUAL_TRANSACTION,
+    largeTransaction: EventType.UNUSUAL_TRANSACTION
   };
 
   const singleType = scenarioMap[normalized];
@@ -46,17 +57,17 @@ export async function simulateScenario(repo, userId, scenario) {
     return [singleResult];
   }
 
-  if (normalized !== 'accountTakeover') {
+  if (normalized !== 'accountTakeover' && normalized !== 'fullTakeover') {
     throw new Error(`Unknown simulation scenario: ${scenario}`);
   }
 
   // Full correlated account takeover sequence:
+  // SIM_SWAP -> NEW_DEVICE -> PASSWORD_RESET -> NEW_BENEFICIARY
   const order = [
     EventType.SIM_CHANGED,
     EventType.NEW_DEVICE_LOGIN,
     EventType.PASSWORD_RESET,
-    EventType.NEW_BENEFICIARY,
-    EventType.UNUSUAL_TRANSACTION
+    EventType.NEW_BENEFICIARY
   ];
 
   const results = [];
@@ -66,7 +77,7 @@ export async function simulateScenario(repo, userId, scenario) {
     const event = {
       ...baseEvent,
       source: i === 0 ? 'MOCK_CARRIER' : 'AUTH_SERVICE',
-      metadata: i === order.length - 1 ? { transactionId: 'held-txn-ato-992', amount: '₹2,00,000' } : {}
+      metadata: { step: i + 1, totalSteps: order.length, label: 'ATO Attack Simulation' }
     };
     results.push(await repo.ingest(event));
   }

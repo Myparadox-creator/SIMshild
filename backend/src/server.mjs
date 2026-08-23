@@ -16,6 +16,7 @@ import { handleCasesRoute } from './routes/cases.mjs';
 import { handleMetricsRoute } from './routes/metrics.mjs';
 import { handleDashboardRoute } from './routes/dashboard.mjs';
 import { handleSecurityRoute } from './routes/security.mjs';
+import { handleTransactionsRoute, handleBankingUserRoutes } from './routes/transactions.mjs';
 
 /**
  * Initializes repository based on environment configuration.
@@ -126,21 +127,28 @@ export function createServer(repo) {
         return;
       }
 
-      // 6. Security confirmation: /api/security/confirm-activity
-      if (method === 'POST' && pathname === '/api/security/confirm-activity') {
+      // 6. Security routes: /api/security/confirm-activity & /api/security/emergency-lock
+      if (method === 'POST' && pathname.startsWith('/api/security/')) {
         const { parsed } = await parseJsonBody(req);
-        await handleSecurityRoute(req, res, repo, parsed);
+        await handleSecurityRoute(req, res, repo, parsed, pathname);
         return;
       }
 
-      // 7. Reset endpoint for dev testing: /api/reset
+      // 7. Transactions API: /api/transactions/*
+      if (parts[0] === 'api' && parts[1] === 'transactions') {
+        const { parsed } = method === 'POST' ? await parseJsonBody(req) : { parsed: {} };
+        await handleTransactionsRoute(req, res, repo, parts, parsed);
+        return;
+      }
+
+      // 8. Reset endpoint for dev testing: /api/reset
       if (method === 'POST' && pathname === '/api/reset') {
         const { parsed } = await parseJsonBody(req);
         await handleResetRoute(req, res, repo, parsed);
         return;
       }
 
-      // 7. Mobile Events ingestion & global stream
+      // 9. Mobile Events ingestion & global stream
       if (pathname === '/api/mobile-events') {
         if (method === 'GET') {
           await handleMobileEventsRoute(req, res, repo, '', {});
@@ -153,15 +161,24 @@ export function createServer(repo) {
         }
       }
 
-      // 8. User queries: /api/users/:userId/:resource
-      if (method === 'GET' && parts[0] === 'api' && parts[1] === 'users' && parts.length === 4) {
+      // 10. User & Banking queries: /api/users/:userId/:resource
+      if (parts[0] === 'api' && parts[1] === 'users' && parts.length === 4) {
         const userId = parts[2];
         const resource = parts[3];
-        await handleUserRoutes(req, res, repo, userId, resource);
-        return;
+
+        if (['balance', 'transactions', 'beneficiaries'].includes(resource)) {
+          const { parsed } = method === 'POST' ? await parseJsonBody(req) : { parsed: {} };
+          await handleBankingUserRoutes(req, res, repo, userId, resource, parsed);
+          return;
+        }
+
+        if (method === 'GET') {
+          await handleUserRoutes(req, res, repo, userId, resource);
+          return;
+        }
       }
 
-      // 9. Fraud Alert resolution: /api/fraud-alerts/:alertId/:action
+      // 11. Fraud Alert resolution: /api/fraud-alerts/:alertId/:action
       if (method === 'POST' && parts[0] === 'api' && parts[1] === 'fraud-alerts' && parts.length === 4) {
         const alertId = parts[2];
         const action = parts[3];
@@ -169,7 +186,7 @@ export function createServer(repo) {
         return;
       }
 
-      // 10. Simulation endpoints: /api/simulation/:scenario
+      // 12. Simulation endpoints: /api/simulation/:scenario
       if (method === 'POST' && parts[0] === 'api' && parts[1] === 'simulation' && parts.length === 3) {
         const scenario = parts[2];
         const { parsed } = await parseJsonBody(req);
@@ -226,8 +243,10 @@ export async function startServer() {
   return { server, repo };
 }
 
+import { pathToFileURL } from 'node:url';
+
 // Automatically start if executed directly
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
+if (process.argv[1] && (import.meta.url === pathToFileURL(process.argv[1]).href || process.argv[1].endsWith('server.mjs'))) {
   startServer().catch((err) => {
     logger.error('Failed to start SIMShield Risk Service', err);
     process.exit(1);
