@@ -333,7 +333,11 @@ npm test
 
 ---
 
-## 📄 License & Implementation Docs
+## 📄 Documentation & Guides
 
-* **Implementation Walkthrough:** [`walkthrough.md`](walkthrough.md)
+* **Security Policy & Model:** [`SECURITY.md`](SECURITY.md)
+* **Architecture & Data Flow:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+* **REST API Reference:** [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)
+* **Live Hackathon & Demo Guide:** [`docs/DEMO_GUIDE.md`](docs/DEMO_GUIDE.md)
+* **Developer Brain & Invariants:** [`BRAIN.md`](BRAIN.md)
 * **License:** [MIT License](LICENSE)
