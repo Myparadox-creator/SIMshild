@@ -147,13 +147,36 @@ public class MainActivity extends Activity {
         headerTitles.addView(createText("MOBILE IDENTITY & ZERO-TRUST BANKING", 11, COLOR_TEXT_MUTED));
         headerRow.addView(headerTitles, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        Button btnServer = createButton("⚙️ Server", false);
-        btnServer.setOnClickListener(v -> showServerConfigDialog());
-        headerRow.addView(btnServer);
+        LinearLayout headerActions = new LinearLayout(this);
+        headerActions.setOrientation(LinearLayout.HORIZONTAL);
+        headerActions.setGravity(Gravity.CENTER_VERTICAL);
 
-        Button btnRefresh = createButton("🔄", false);
-        btnRefresh.setOnClickListener(v -> refreshAllData());
-        headerRow.addView(btnRefresh);
+        Button btnServer = new Button(this);
+        btnServer.setText("⚙️");
+        btnServer.setTextSize(14);
+        btnServer.setTextColor(COLOR_PRIMARY_BLUE);
+        btnServer.setBackground(createRoundedDrawable(Color.rgb(238, 242, 255), 10));
+        btnServer.setPadding(dp(10), dp(6), dp(10), dp(6));
+        btnServer.setOnClickListener(v -> showServerConfigDialog());
+        headerActions.addView(btnServer);
+
+        Button btnRefresh = new Button(this);
+        btnRefresh.setText("🔄 Sync");
+        btnRefresh.setTextSize(12);
+        btnRefresh.setTextColor(COLOR_PRIMARY_BLUE);
+        btnRefresh.setBackground(createRoundedDrawable(Color.rgb(238, 242, 255), 10));
+        btnRefresh.setPadding(dp(10), dp(6), dp(10), dp(6));
+        LinearLayout.LayoutParams refParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        refParams.setMargins(dp(6), 0, 0, 0);
+        btnRefresh.setLayoutParams(refParams);
+        btnRefresh.setOnClickListener(v -> {
+            showToast("Syncing...", "Refreshing security & banking data");
+            refreshAllData();
+        });
+        headerActions.addView(btnRefresh);
 
         root.addView(headerRow);
 
@@ -306,6 +329,20 @@ public class MainActivity extends Activity {
         btnPay.setTextColor(Color.WHITE);
         btnPay.setPadding(0, dp(14), 0, dp(14));
         btnPay.setOnClickListener(v -> initiatePaymentFlow());
+
+        inputAmount.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String amt = s.toString().trim();
+                btnPay.setText("CONTINUE TO PAY ₹" + (amt.isEmpty() ? "0" : amt));
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
 
         LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
