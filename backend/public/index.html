@@ -281,7 +281,7 @@
         </article>
 
         <!-- Mock UPI Payment Simulation Card -->
-        <article class="panel-card" id="panel-mock-payment-studio" style="margin-top: 1.25rem;">
+        <article class="panel-card" id="panel-mock-payment-studio">
           <div class="panel-header">
             <div>
               <h2 class="panel-title">💳 SIMShield Pay — Mock Transaction Gateway</h2>
@@ -290,24 +290,24 @@
             <span class="badge-tag live-tag">MOCK UPI</span>
           </div>
 
-          <div style="padding: 0.5rem 0;">
-            <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
-              <div style="flex: 1;">
-                <label style="font-size: 0.8rem; color: var(--color-text-muted);">Recipient</label>
-                <input type="text" id="demo-pay-recipient" class="form-control" value="Rahul (Personal)" style="padding: 0.4rem 0.6rem; font-size: 0.85rem;">
+          <div class="mock-pay-container">
+            <div class="mock-pay-form-grid">
+              <div class="form-group">
+                <label for="demo-pay-recipient">Recipient</label>
+                <input type="text" id="demo-pay-recipient" class="form-control" value="Rahul (Personal)">
               </div>
-              <div style="flex: 1;">
-                <label style="font-size: 0.8rem; color: var(--color-text-muted);">UPI ID</label>
-                <input type="text" id="demo-pay-upi" class="form-control" value="rahul@mockbank" style="padding: 0.4rem 0.6rem; font-size: 0.85rem;">
+              <div class="form-group">
+                <label for="demo-pay-upi">UPI ID</label>
+                <input type="text" id="demo-pay-upi" class="form-control" value="rahul@mockbank">
               </div>
-              <div style="width: 110px;">
-                <label style="font-size: 0.8rem; color: var(--color-text-muted);">Amount (₹)</label>
-                <input type="number" id="demo-pay-amount" class="form-control" value="2000" style="padding: 0.4rem 0.6rem; font-size: 0.85rem;">
+              <div class="form-group amount-group">
+                <label for="demo-pay-amount">Amount (₹)</label>
+                <input type="number" id="demo-pay-amount" class="form-control" value="2000">
               </div>
             </div>
 
-            <div style="display: flex; gap: 0.5rem;">
-              <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="window.SimShieldApp.testMockPayment()">
+            <div class="mock-pay-actions">
+              <button class="btn btn-primary btn-sm btn-pay-execute" onclick="window.SimShieldApp.testMockPayment()">
                 💸 Execute Payment (Pre-Check → Authorize)
               </button>
               <button class="btn btn-secondary btn-sm" onclick="window.SimShieldApp.triggerEmergencyLock()">
@@ -315,7 +315,7 @@
               </button>
             </div>
 
-            <div id="payment-result-box" style="margin-top: 0.75rem; display: none; padding: 0.6rem 0.8rem; border-radius: 6px; font-size: 0.85rem;"></div>
+            <div id="payment-result-box" class="payment-result-box" style="display: none;"></div>
           </div>
         </article>
 
