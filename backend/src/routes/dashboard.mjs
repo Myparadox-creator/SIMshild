@@ -9,7 +9,22 @@ import { dirname, join, extname } from 'node:path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const PUBLIC_DIR = join(__dirname, '..', '..', 'public');
+
+function getPublicDir() {
+  const candidates = [
+    join(__dirname, '..', '..', 'public'),
+    join(process.cwd(), 'backend', 'public'),
+    join(process.cwd(), 'public')
+  ];
+  for (const dir of candidates) {
+    if (existsSync(join(dir, 'index.html'))) {
+      return dir;
+    }
+  }
+  return join(__dirname, '..', '..', 'public');
+}
+
+const PUBLIC_DIR = getPublicDir();
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
